@@ -52,39 +52,28 @@ def print_status(info):
 
 
 def main():
-    options = ["Запуск игры", "Восстановление файлов игры", "Загрузка сборки"]
+    options = ["Запуск игры", "Восстановление файлов игры"]
     for i, j in enumerate(options, 1):
         print(f"{i}) {j}")
     selected = int(input())
-
-    if selected == 1 or selected == 2:
-        mod_loaders = ["fabric", "forge", "vanilla"]
-        print("Выберите загрузчик модов:")
-        for i, j in enumerate(mod_loaders, 1):
-            print(f"{i}) {j}")
-        mod_loader = int(input())
-
-        version, version_name = get_version(
-            input("Выберите версию: "), mod_loaders[mod_loader - 1]
-        )
-        nickname = input("Введите никнейм: ")
-    else:
-        version, version_name, mod_loader, nickname = "", "", "", ""
+    mod_loaders = ["fabric", "forge", "vanilla"]
+    print("Выберите загрузчик модов:")
+    for i, j in enumerate(mod_loaders, 1):
+        print(f"{i}) {j}")
+    mod_loader = int(input())
+    version, version_name = get_version(
+        input("Выберите версию: "), mod_loaders[mod_loader - 1]
+    )
+    nickname = input("Введите никнейм: ")
     if selected == 2:
         fix_mode = 1
     else:
         fix_mode = 0
-
-    if selected == 3:
-        mrpack_path = input("Введите путь к mrpack'у: ")
-    else:
-        mrpack_path = ""
     return (
         version,
         version_name,
         mod_loaders[mod_loader - 1],
         fix_mode,
-        mrpack_path,
         nickname,
     )
 
@@ -102,19 +91,6 @@ def initialize(mod_loader, nickname):
     options = {"username": nickname, "uuid": "", "token": ""}
     minecraft_directory = minecraft_launcher_lib.utils.get_minecraft_directory()
     return install_type, minecraft_directory, options
-
-
-# скачивание mrpack
-def install_mrpack(mrpack_path, minecraft_directory):
-    minecraft_launcher_lib.mrpack.install_mrpack(
-        mrpack_path,
-        minecraft_directory,
-        callback={
-            "setProgress": set_progress,
-            "setMax": set_max,
-            "setStatus": print_status,
-        },
-    )
 
 
 def install_version(version, version_name, install_type, fix_mode, minecraft_directory):
@@ -136,12 +112,8 @@ def install_version(version, version_name, install_type, fix_mode, minecraft_dir
 
 
 while True:
-    version, version_name, mod_loader, fix_mode, mrpack_path, nickname = main()
+    version, version_name, mod_loader, fix_mode, nickname = main()
     install_type, minecraft_directory, options = initialize(mod_loader, nickname)
-
-    if mrpack_path:
-        install_mrpack(mrpack_path, minecraft_directory)
-        continue
     install_version(version, version_name, install_type, fix_mode, minecraft_directory)
 
     # получение команды для запуска майна
