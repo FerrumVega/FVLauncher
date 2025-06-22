@@ -88,7 +88,11 @@ def initialize(mod_loader, nickname):
         install_type = minecraft_launcher_lib.install.install_minecraft_version
 
     # аргументы майнкрафта и директория майнкрафта
-    options = {"username": nickname, "uuid": "", "token": ""}
+    options = {
+        "username": nickname,
+        "uuid": "a00a0aaa-0aaa-00a0-a000-00a0a00a0aa0",
+        "token": "",
+    }
     minecraft_directory = minecraft_launcher_lib.utils.get_minecraft_directory()
     return install_type, minecraft_directory, options
 
@@ -111,25 +115,23 @@ def install_version(version, version_name, install_type, fix_mode, minecraft_dir
         )
 
 
-while True:
-    version, version_name, mod_loader, fix_mode, nickname = main()
-    install_type, minecraft_directory, options = initialize(mod_loader, nickname)
-    install_version(version, version_name, install_type, fix_mode, minecraft_directory)
+version, version_name, mod_loader, fix_mode, nickname = main()
+install_type, minecraft_directory, options = initialize(mod_loader, nickname)
+install_version(version, version_name, install_type, fix_mode, minecraft_directory)
+# получение команды для запуска майна
+minecraft_command = minecraft_launcher_lib.command.get_minecraft_command(
+    version_name, minecraft_directory, options
+)
+# блокировка интернета
+os.system(
+    f'netsh advfirewall firewall add rule name="Block Minecraft" dir=out action=block program={os.path.join(minecraft_directory, "runtime\\jre-legacy\\windows-x64\\jre-legacy\\bin\\java.exe")} enable=yes'
+)
 
-    # получение команды для запуска майна
-    minecraft_command = minecraft_launcher_lib.command.get_minecraft_command(
-        version_name, minecraft_directory, options
-    )
-    # блокировка интернета
-    os.system(
-        f'netsh advfirewall firewall add rule name="Block Minecraft" dir=out action=block program={os.path.join(minecraft_directory, "runtime\\jre-legacy\\windows-x64\\jre-legacy\\bin\\java.exe")} enable=yes'
-    )
+# запуск майна
+subprocess.Popen(minecraft_command, cwd=minecraft_directory)
 
-    # запуск майна
-    subprocess.Popen(minecraft_command, cwd=minecraft_directory)
+# ждем запуска майна
+time.sleep(20)
 
-    # ждем запуска майна
-    time.sleep(20)
-
-    # разблокировка инета
-    os.system(f'netsh advfirewall firewall delete rule name="Block Minecraft"')
+# разблокировка инета
+os.system(f'netsh advfirewall firewall delete rule name="Block Minecraft"')
