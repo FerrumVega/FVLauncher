@@ -1,11 +1,19 @@
-import minecraft_launcher_lib, subprocess, os, time
+import minecraft_launcher_lib, subprocess, os, time, ctypes, optipy, threading, tkinter as tk
+from tkinter import ttk
+
+
+try:
+    ctypes.windll.shcore.SetProcessDpiAwareness(1)  # SYSTEM_AWARE
+except Exception:
+    pass
+
 
 # начальные значения прогресса загрузки
 progress = 0
 progress_max = 100
 
 
-def get_version(raw_version, mod_loader):
+def resolve_version_names(raw_version, mod_loader):
     version = raw_version
     version_name = ""
     # задание последней версии forge
@@ -31,54 +39,95 @@ def get_version(raw_version, mod_loader):
 
 
 # отображение прогресса
-def set_progress(info):
+def update_progress_value(info):
     global progress
     progress = info
 
 
 # отображение прогресса
-def set_max(info):
+def update_progress_max(info):
     global progress_max
     progress_max = info
 
 
 # отображение прогресса
-def print_status(info):
-    global progress, progress_max
+def display_download_status(info):
+    global progress, progress_max, progress_var, download_info
     percents = progress / progress_max * 100
     if percents > 100.0:
         percents = 100.0
-    print(f"{info} ({percents:.1f}%)")
+    progress_var.set(percents)
+    download_info.set(info)
 
 
-def main():
-    options = ["Запуск игры", "Восстановление файлов игры"]
-    for i, j in enumerate(options, 1):
-        print(f"{i}) {j}")
-    selected = int(input())
+def gui():
+    global progress_var, download_info
+
+    def on_start_button():
+        nonlocal mod_loader, version, nickname, fix_mode
+        mod_loader = loaders_combobox.get()
+        version = versions_combobox.get()
+        nickname = nickname_entry.get()
+        fix_mode = fix_mode_var.get()
+        version, version_name = resolve_version_names(version, mod_loader)
+        threading.Thread(
+            target=launch,
+            args=(mod_loader, nickname, version, version_name, fix_mode),
+            daemon=True,
+        ).start()
+        return
+
+    mod_loader = ""
+    version = ""
+    nickname = ""
+    fix_mode = 0
+
+    root = tk.Tk()
+    root.title("FVLauncher")
+    root.iconbitmap(r"C:\Users\user\Desktop\minecraft_title.ico")
+    fix_mode_var = tk.IntVar()
+    download_info = tk.StringVar()
+    progress_var = tk.DoubleVar()
+    root.geometry("300x500")
+
     mod_loaders = ["fabric", "forge", "vanilla"]
-    print("Выберите загрузчик модов:")
-    for i, j in enumerate(mod_loaders, 1):
-        print(f"{i}) {j}")
-    mod_loader = int(input())
-    version, version_name = get_version(
-        input("Выберите версию: "), mod_loaders[mod_loader - 1]
-    )
-    nickname = input("Введите никнейм: ")
-    if selected == 2:
-        fix_mode = 1
-    else:
-        fix_mode = 0
+    loaders_combobox = ttk.Combobox(root, values=mod_loaders)
+    loaders_combobox.pack(pady=20)
+
+    versions_names_list = []
+    versions_list = minecraft_launcher_lib.utils.get_version_list()
+    for item in versions_list:
+        versions_names_list.append(item["id"])
+    versions_combobox = ttk.Combobox(root, values=versions_names_list)
+    versions_combobox.pack(pady=20)
+
+    nickname_entry = ttk.Entry(root)
+    nickname_entry.pack(pady=20)
+
+    fix_mode_checkbox = ttk.Checkbutton(root, text="fix-mode", variable=fix_mode_var)
+    fix_mode_checkbox.pack(pady=20)
+
+    start_button = ttk.Button(root, text="Запустить игру", command=on_start_button)
+    start_button.pack(pady=20)
+
+    progressbar = ttk.Progressbar(root, variable=progress_var)
+    progressbar.pack(pady=20)
+
+    label = ttk.Label(textvariable=download_info)
+    label.pack(pady=20)
+
+    root.mainloop()
+
     return (
         version,
         version_name,
-        mod_loaders[mod_loader - 1],
+        mod_loader,
         fix_mode,
         nickname,
     )
 
 
-def initialize(mod_loader, nickname):
+def prepare_installation_parameters(mod_loader, nickname):
     # задание типа установки в зависимости от загрузчика
     if mod_loader == "fabric":
         install_type = minecraft_launcher_lib.fabric.install_fabric
@@ -108,30 +157,35 @@ def install_version(version, version_name, install_type, fix_mode, minecraft_dir
             version,
             minecraft_directory,
             callback={
-                "setProgress": set_progress,
-                "setMax": set_max,
-                "setStatus": print_status,
+                "setProgress": update_progress_value,
+                "setMax": update_progress_max,
+                "setStatus": display_download_status,
             },
         )
 
 
-version, version_name, mod_loader, fix_mode, nickname = main()
-install_type, minecraft_directory, options = initialize(mod_loader, nickname)
-install_version(version, version_name, install_type, fix_mode, minecraft_directory)
-# получение команды для запуска майна
-minecraft_command = minecraft_launcher_lib.command.get_minecraft_command(
-    version_name, minecraft_directory, options
-)
-# блокировка интернета
-os.system(
-    f'netsh advfirewall firewall add rule name="Block Minecraft" dir=out action=block program={os.path.join(minecraft_directory, "runtime\\jre-legacy\\windows-x64\\jre-legacy\\bin\\java.exe")} enable=yes'
-)
+def launch(mod_loader, nickname, version, version_name, fix_mode):
+    install_type, minecraft_directory, options = prepare_installation_parameters(
+        mod_loader, nickname
+    )
+    install_version(version, version_name, install_type, fix_mode, minecraft_directory)
+    # получение команды для запуска майна
+    minecraft_command = minecraft_launcher_lib.command.get_minecraft_command(
+        version_name, minecraft_directory, options
+    )
+    # блокировка интернета
+    os.system(
+        f'netsh advfirewall firewall add rule name="Block Minecraft" dir=out action=block program={os.path.join(minecraft_directory, "runtime\\jre-legacy\\windows-x64\\jre-legacy\\bin\\java.exe")} enable=yes'
+    )
 
-# запуск майна
-subprocess.Popen(minecraft_command, cwd=minecraft_directory)
+    # запуск майна
+    subprocess.Popen(minecraft_command, cwd=minecraft_directory)
 
-# ждем запуска майна
-time.sleep(20)
+    # ждем запуска майна
+    time.sleep(20)
 
-# разблокировка инета
-os.system(f'netsh advfirewall firewall delete rule name="Block Minecraft"')
+    # разблокировка инета
+    os.system(f'netsh advfirewall firewall delete rule name="Block Minecraft"')
+
+
+version, version_name, mod_loader, fix_mode, nickname = gui()
