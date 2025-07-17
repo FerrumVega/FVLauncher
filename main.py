@@ -3,12 +3,11 @@ from tkinter import ttk
 
 
 try:
-    ctypes.windll.shcore.SetProcessDpiAwareness(1)  # SYSTEM_AWARE
+    ctypes.windll.shcore.SetProcessDpiAwareness(1)
 except Exception:
     pass
 
 
-# начальные значения прогресса загрузки
 progress = 0
 progress_max = 100
 
@@ -16,14 +15,12 @@ progress_max = 100
 def resolve_version_names(raw_version, mod_loader):
     version = raw_version
     version_name = ""
-    # задание последней версии forge
     if mod_loader == "forge":
         for forge_version in minecraft_launcher_lib.forge.list_forge_versions():
             if forge_version.startswith(raw_version):
                 version = forge_version
                 break
 
-    # задание названий папок с версией
     if mod_loader == "fabric":
         version_name = (
             "fabric-loader-"
@@ -38,19 +35,16 @@ def resolve_version_names(raw_version, mod_loader):
     return (version, version_name)
 
 
-# отображение прогресса
 def update_progress_value(info):
     global progress
     progress = info
 
 
-# отображение прогресса
 def update_progress_max(info):
     global progress_max
     progress_max = info
 
 
-# отображение прогресса
 def display_download_status(info):
     global progress, progress_max, progress_var, download_info
     percents = progress / progress_max * 100
@@ -184,7 +178,6 @@ def gui():
 
 
 def prepare_installation_parameters(mod_loader, nickname, java_arguments):
-    # задание типа установки в зависимости от загрузчика
     if mod_loader == "fabric":
         install_type = minecraft_launcher_lib.fabric.install_fabric
     elif mod_loader == "forge":
@@ -192,7 +185,6 @@ def prepare_installation_parameters(mod_loader, nickname, java_arguments):
     else:
         install_type = minecraft_launcher_lib.install.install_minecraft_version
 
-    # аргументы майнкрафта и директория майнкрафта
     options = {
         "username": nickname,
         "uuid": "a00a0aaa-0aaa-00a0-a000-00a0a00a0aa0",
@@ -204,12 +196,10 @@ def prepare_installation_parameters(mod_loader, nickname, java_arguments):
 
 
 def install_version(version, version_name, install_type, fix_mode, minecraft_directory):
-    # если версия не скачана
     if (
         not os.path.isdir(os.path.join(minecraft_directory, "versions", version_name))
         or fix_mode
     ):
-        # скачивание версии
         install_type(
             version,
             minecraft_directory,
@@ -226,29 +216,26 @@ def launch(mod_loader, nickname, version, version_name, fix_mode, java_arguments
         mod_loader, nickname, java_arguments
     )
     install_version(version, version_name, install_type, fix_mode, minecraft_directory)
-    # получение команды для запуска майна
+
     minecraft_command = minecraft_launcher_lib.command.get_minecraft_command(
         version_name, minecraft_directory, options
     )
-    # блокировка интернета
     subprocess.run(
-        'netsh advfirewall firewall add rule name="Block Minecraft" dir=out action=block program={os.path.join(minecraft_directory, "runtime\\jre-legacy\\windows-x64\\jre-legacy\\bin\\java.exe")} enable=yes, ',
+        f'netsh advfirewall firewall add rule name="Block Minecraft" dir=out action=block program={os.path.join(minecraft_directory, "runtime\\jre-legacy\\windows-x64\\jre-legacy\\bin\\java.exe")} enable=yes, ',
         shell=True,
         creationflags=subprocess.CREATE_NO_WINDOW,
     )
 
-    # запуск майна
     subprocess.Popen(
         minecraft_command,
         cwd=minecraft_directory,
         creationflags=subprocess.CREATE_NO_WINDOW,
     )
 
-    # ждем запуска майна
     time.sleep(20)
 
     subprocess.run(
-        'netsh advfirewall firewall delete rule name="Block Minecraft"',
+        f'netsh advfirewall firewall delete rule name="Block Minecraft"',
         shell=True,
         creationflags=subprocess.CREATE_NO_WINDOW,
     )
