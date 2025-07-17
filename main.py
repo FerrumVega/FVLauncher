@@ -1,15 +1,11 @@
 import minecraft_launcher_lib, subprocess, os, time, ctypes, optipy, threading, sys, sv_ttk, tkinter as tk
-from tkinter import ttk
+from tkinter import ttk, messagebox
 
 
 try:
     ctypes.windll.shcore.SetProcessDpiAwareness(1)
 except Exception:
     pass
-
-
-progress = 0
-progress_max = 100
 
 
 def resolve_version_names(raw_version, mod_loader):
@@ -35,25 +31,6 @@ def resolve_version_names(raw_version, mod_loader):
     return (version, version_name)
 
 
-def update_progress_value(info):
-    global progress
-    progress = info
-
-
-def update_progress_max(info):
-    global progress_max
-    progress_max = info
-
-
-def display_download_status(info):
-    global progress, progress_max, progress_var, download_info
-    percents = progress / progress_max * 100
-    if percents > 100.0:
-        percents = 100.0
-    progress_var.set(percents)
-    download_info.set(info)
-
-
 def resource_path(relative_path):
     if hasattr(sys, "_MEIPASS"):
         return os.path.join(sys._MEIPASS, relative_path)
@@ -61,28 +38,50 @@ def resource_path(relative_path):
 
 
 def gui():
-    global progress_var, download_info
-
     def on_start_button():
+        start_button["state"] = "disabled"
         mod_loader = loaders_combobox.get()
         version = versions_combobox.get()
         nickname = nickname_entry.get()
         fix_mode = fix_mode_var.get()
         java_arguments = java_arguments_var.get().split()
         version, version_name = resolve_version_names(version, mod_loader)
-        threading.Thread(
-            target=launch,
-            args=(
-                mod_loader,
-                nickname,
-                version,
-                version_name,
-                fix_mode,
-                java_arguments,
-            ),
-            daemon=True,
-        ).start()
-        return
+        if all((mod_loader, nickname, version)):
+            threading.Thread(
+                target=launch,
+                args=(
+                    mod_loader,
+                    nickname,
+                    version,
+                    version_name,
+                    fix_mode,
+                    java_arguments,
+                    start_button,
+                    progress_var,
+                    download_info,
+                ),
+                daemon=True,
+            ).start()
+        else:
+            null_elements = ", ".join(
+                [
+                    name
+                    for element, name in zip(
+                        (mod_loader, nickname, version),
+                        ("загрузчик модов", "никнейм", "версия"),
+                    )
+                    if not element
+                ]
+            ).capitalize()
+            messagebox.showerror(
+                "Ошибка запуска",
+                f"Следующие поля не заполнены:\n{null_elements}.",
+            )
+            start_button["state"] = "normal"
+
+        if version not in versions_names_list:
+            messagebox.showerror("Ошибка запуска", "Выберите версию из списка.")
+            start_button["state"] = "normal"
 
     def open_settings():
         settings_window = tk.Toplevel()
@@ -109,17 +108,11 @@ def gui():
         )
         fix_mode_checkbox.place(relx=0.5, y=110, anchor="center")
 
-    mod_loader = ""
-    version = ""
-    nickname = ""
-    fix_mode = 0
-
     root = tk.Tk()
     root.title("FVLauncher")
     root.iconbitmap(resource_path("minecraft_title.ico"))
     root.iconphoto(True, tk.PhotoImage(file=resource_path("minecraft_title.png")))
     root.geometry("300x500")
-    root.positionfrom()
     root.resizable(width=False, height=False)
 
     fix_mode_var = tk.IntVar()
@@ -156,8 +149,8 @@ def gui():
     progressbar = ttk.Progressbar(root, variable=progress_var, length=295)
     progressbar.place(relx=0.5, y=400, anchor="center")
 
-    label = ttk.Label(textvariable=download_info)
-    label.place(relx=0.5, y=420, anchor="center")
+    download_info_label = ttk.Label(textvariable=download_info, font=("", 8))
+    download_info_label.place(relx=0.5, y=430, anchor="center")
 
     settings_button = ttk.Button(root, text="⚙️", command=open_settings, width=3)
     settings_button.place(x=270, y=480, anchor="center")
@@ -195,7 +188,31 @@ def prepare_installation_parameters(mod_loader, nickname, java_arguments):
     return install_type, minecraft_directory, options
 
 
-def install_version(version, version_name, install_type, fix_mode, minecraft_directory):
+def install_version(
+    version,
+    version_name,
+    install_type,
+    fix_mode,
+    minecraft_directory,
+    progress_var,
+    download_info,
+):
+    def track_progress(value, type=None):
+        if not "progress" in locals():
+            progress = 0.0
+        if not "max_progress" in locals():
+            max_progress = 100.0
+        if type == "progress":
+            progress = value
+        elif type == "max":
+            max_progress = value
+        else:
+            download_info.set(value)
+        percents = progress / max_progress * 100
+        if percents > 100.0:
+            percents = 100.0
+        progress_var.set(percents)
+
     if (
         not os.path.isdir(os.path.join(minecraft_directory, "versions", version_name))
         or fix_mode
@@ -204,22 +221,45 @@ def install_version(version, version_name, install_type, fix_mode, minecraft_dir
             version,
             minecraft_directory,
             callback={
-                "setProgress": update_progress_value,
-                "setMax": update_progress_max,
-                "setStatus": display_download_status,
+                "setProgress": lambda value: track_progress(value, "progress"),
+                "setMax": lambda value: track_progress(value, "max"),
+                "setStatus": lambda value: track_progress(value),
             },
         )
+    else:
+        download_info.set("Версия уже установлена, запуск...")
 
 
-def launch(mod_loader, nickname, version, version_name, fix_mode, java_arguments):
+def launch(
+    mod_loader,
+    nickname,
+    version,
+    version_name,
+    fix_mode,
+    java_arguments,
+    start_button,
+    progress_var,
+    download_info,
+):
     install_type, minecraft_directory, options = prepare_installation_parameters(
         mod_loader, nickname, java_arguments
     )
-    install_version(version, version_name, install_type, fix_mode, minecraft_directory)
+    install_version(
+        version,
+        version_name,
+        install_type,
+        fix_mode,
+        minecraft_directory,
+        progress_var,
+        download_info,
+    )
+
+    download_info.set("Версия установлена, запуск...")
 
     minecraft_command = minecraft_launcher_lib.command.get_minecraft_command(
         version_name, minecraft_directory, options
     )
+    start_button["state"] = "normal"
     subprocess.run(
         f'netsh advfirewall firewall add rule name="Block Minecraft" dir=out action=block program={os.path.join(minecraft_directory, "runtime\\jre-legacy\\windows-x64\\jre-legacy\\bin\\java.exe")} enable=yes',
         shell=True,
