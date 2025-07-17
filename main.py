@@ -221,7 +221,7 @@ def launch(mod_loader, nickname, version, version_name, fix_mode, java_arguments
         version_name, minecraft_directory, options
     )
     subprocess.run(
-        f'netsh advfirewall firewall add rule name="Block Minecraft" dir=out action=block program={os.path.join(minecraft_directory, "runtime\\jre-legacy\\windows-x64\\jre-legacy\\bin\\java.exe")} enable=yes, ',
+        f'netsh advfirewall firewall add rule name="Block Minecraft" dir=out action=block program={os.path.join(minecraft_directory, "runtime\\jre-legacy\\windows-x64\\jre-legacy\\bin\\java.exe")} enable=yes',
         shell=True,
         creationflags=subprocess.CREATE_NO_WINDOW,
     )
