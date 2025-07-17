@@ -1,7 +1,6 @@
 import minecraft_launcher_lib, subprocess, os, time, ctypes, optipy, threading, sys, sv_ttk, tkinter as tk
 from tkinter import ttk, messagebox
 
-
 try:
     ctypes.windll.shcore.SetProcessDpiAwareness(1)
 except Exception:
@@ -9,26 +8,23 @@ except Exception:
 
 
 def resolve_version_names(raw_version, mod_loader):
-    version = raw_version
-    version_name = ""
+    name_of_version_to_install = raw_version
+    name_of_version_folder = raw_version
     if mod_loader == "forge":
         for forge_version in minecraft_launcher_lib.forge.list_forge_versions():
             if forge_version.startswith(raw_version):
-                version = forge_version
-                break
+                name_of_version_to_install = forge_version
+                name_of_version_folder = f"{name_of_version_to_install.split("-")[0]}-forge-{name_of_version_to_install.split("-")[1]}"
+                return (name_of_version_to_install, name_of_version_folder)
+        return None
 
-    if mod_loader == "fabric":
-        version_name = (
-            "fabric-loader-"
-            + minecraft_launcher_lib.fabric.get_latest_loader_version()
-            + f"-{version}"
-        )
-    elif mod_loader == "forge":
-        version_name = f"{version.split("-")[0]}-forge-{version.split("-")[1]}"
-    else:
-        version_name = version
+    elif mod_loader == "fabric":
+        if raw_version in minecraft_launcher_lib.fabric.get_all_minecraft_versions():
+            name_of_version_folder = f"fabric-loader-{minecraft_launcher_lib.fabric.get_latest_loader_version()}-{name_of_version_to_install}"
+            return (name_of_version_to_install, name_of_version_folder)
+        return None
 
-    return (version, version_name)
+    return (name_of_version_to_install, name_of_version_folder)
 
 
 def resource_path(relative_path):
@@ -41,46 +37,52 @@ def gui():
     def on_start_button():
         start_button["state"] = "disabled"
         mod_loader = loaders_combobox.get()
-        version = versions_combobox.get()
+        raw_version = versions_combobox.get()
         nickname = nickname_entry.get()
         fix_mode = fix_mode_var.get()
         java_arguments = java_arguments_var.get().split()
-        version, version_name = resolve_version_names(version, mod_loader)
-        if all((mod_loader, nickname, version)):
-            threading.Thread(
-                target=launch,
-                args=(
-                    mod_loader,
-                    nickname,
-                    version,
-                    version_name,
-                    fix_mode,
-                    java_arguments,
-                    start_button,
-                    progress_var,
-                    download_info,
-                ),
-                daemon=True,
-            ).start()
-        else:
-            null_elements = ", ".join(
-                [
-                    name
-                    for element, name in zip(
-                        (mod_loader, nickname, version),
-                        ("загрузчик модов", "никнейм", "версия"),
-                    )
-                    if not element
-                ]
-            ).capitalize()
-            messagebox.showerror(
-                "Ошибка запуска",
-                f"Следующие поля не заполнены:\n{null_elements}.",
-            )
-            start_button["state"] = "normal"
-
-        if version not in versions_names_list:
+        returned_versions_data = resolve_version_names(raw_version, mod_loader)
+        if raw_version not in versions_names_list:
             messagebox.showerror("Ошибка запуска", "Выберите версию из списка.")
+            start_button["state"] = "normal"
+        elif returned_versions_data:
+            version, version_name = returned_versions_data
+            if all((mod_loader, nickname, version)):
+                threading.Thread(
+                    target=launch,
+                    args=(
+                        mod_loader,
+                        nickname,
+                        version,
+                        version_name,
+                        fix_mode,
+                        java_arguments,
+                        start_button,
+                        progress_var,
+                        download_info,
+                    ),
+                    daemon=True,
+                ).start()
+            else:
+                null_elements = ", ".join(
+                    [
+                        name
+                        for element, name in zip(
+                            (mod_loader, nickname, version),
+                            ("загрузчик модов", "никнейм", "версия"),
+                        )
+                        if not element
+                    ]
+                ).capitalize()
+                messagebox.showerror(
+                    "Ошибка запуска",
+                    f"Следующие поля не заполнены:\n{null_elements}.",
+                )
+                start_button["state"] = "normal"
+        else:
+            messagebox.showerror(
+                "Ошибка", "Для данной версии нет выбранного вами загрузчика модов."
+            )
             start_button["state"] = "normal"
 
     def open_settings():
@@ -158,17 +160,6 @@ def gui():
     sv_ttk.set_theme("dark")
     root.mainloop()
 
-    try:
-        return (
-            version,
-            version_name,
-            mod_loader,
-            fix_mode,
-            nickname,
-        )
-    except:
-        os._exit(0)
-
 
 def prepare_installation_parameters(mod_loader, nickname, java_arguments):
     if mod_loader == "fabric":
@@ -197,11 +188,11 @@ def install_version(
     progress_var,
     download_info,
 ):
+    progress = 0
+    max_progress = 100
+
     def track_progress(value, type=None):
-        if not "progress" in locals():
-            progress = 0.0
-        if not "max_progress" in locals():
-            max_progress = 100.0
+        nonlocal progress, max_progress
         if type == "progress":
             progress = value
         elif type == "max":
@@ -244,41 +235,43 @@ def launch(
     install_type, minecraft_directory, options = prepare_installation_parameters(
         mod_loader, nickname, java_arguments
     )
-    install_version(
-        version,
-        version_name,
-        install_type,
-        fix_mode,
-        minecraft_directory,
-        progress_var,
-        download_info,
-    )
+    try:
+        install_version(
+            version,
+            version_name,
+            install_type,
+            fix_mode,
+            minecraft_directory,
+            progress_var,
+            download_info,
+        )
+        download_info.set("Версия установлена, запуск...")
+        minecraft_command = minecraft_launcher_lib.command.get_minecraft_command(
+            version_name, minecraft_directory, options
+        )
+        start_button["state"] = "normal"
+        subprocess.run(
+            f'netsh advfirewall firewall add rule name="Block Minecraft" dir=out action=block program={os.path.join(minecraft_directory, "runtime\\jre-legacy\\windows-x64\\jre-legacy\\bin\\java.exe")} enable=yes',
+            shell=True,
+            creationflags=subprocess.CREATE_NO_WINDOW,
+        )
 
-    download_info.set("Версия установлена, запуск...")
+        subprocess.Popen(
+            minecraft_command,
+            cwd=minecraft_directory,
+            creationflags=subprocess.CREATE_NO_WINDOW,
+        )
 
-    minecraft_command = minecraft_launcher_lib.command.get_minecraft_command(
-        version_name, minecraft_directory, options
-    )
-    start_button["state"] = "normal"
-    subprocess.run(
-        f'netsh advfirewall firewall add rule name="Block Minecraft" dir=out action=block program={os.path.join(minecraft_directory, "runtime\\jre-legacy\\windows-x64\\jre-legacy\\bin\\java.exe")} enable=yes',
-        shell=True,
-        creationflags=subprocess.CREATE_NO_WINDOW,
-    )
+        time.sleep(20)
 
-    subprocess.Popen(
-        minecraft_command,
-        cwd=minecraft_directory,
-        creationflags=subprocess.CREATE_NO_WINDOW,
-    )
-
-    time.sleep(20)
-
-    subprocess.run(
-        f'netsh advfirewall firewall delete rule name="Block Minecraft"',
-        shell=True,
-        creationflags=subprocess.CREATE_NO_WINDOW,
-    )
+        subprocess.run(
+            f'netsh advfirewall firewall delete rule name="Block Minecraft"',
+            shell=True,
+            creationflags=subprocess.CREATE_NO_WINDOW,
+        )
+    except Exception as e:
+        messagebox.showerror("Ошибка", f"Ошибка:\n{e}")
+        start_button["state"] = "normal"
 
 
-version, version_name, mod_loader, fix_mode, nickname = gui()
+gui()
