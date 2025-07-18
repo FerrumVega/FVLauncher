@@ -1,4 +1,4 @@
-import minecraft_launcher_lib, subprocess, os, time, ctypes, optipy, threading, sys, sv_ttk, tkinter as tk
+import minecraft_launcher_lib, subprocess, os, time, ctypes, optipy, threading, sys, sv_ttk, configparser, tkinter as tk
 from tkinter import ttk, messagebox
 
 try:
@@ -33,15 +33,55 @@ def resource_path(relative_path):
     return os.path.abspath(relative_path)
 
 
-def gui():
+def load_config():
+    file_path = "FVLauncher.ini"
+    parser = configparser.ConfigParser()
+
+    if not os.path.isfile(file_path):
+        parser.add_section("Settings")
+        parser.set("Settings", "version", "1.16.5")
+        parser.set("Settings", "mod_loader", "vanilla")
+        parser.set("Settings", "nickname", "Player")
+        parser.set("Settings", "fix_mode", "0")
+        parser.set("Settings", "java_arguments", "")
+        with open(file_path, "w", encoding="utf-8") as config_file:
+            parser.write(config_file)
+
+    parser.read(file_path, encoding="utf-8")
+
+    return (parser.get("Settings", option) for option in parser.options("Settings"))
+
+
+def gui(
+    choosen_version,
+    choosen_mod_loader,
+    choosen_nickname,
+    fix_mode_position,
+    choosen_java_arguments,
+):
+    def safe_config():
+        file_path = "FVLauncher.ini"
+        parser = configparser.ConfigParser()
+
+        parser.add_section("Settings")
+        parser.set("Settings", "version", version_var.get())
+        parser.set("Settings", "mod_loader", mod_loader_var.get())
+        parser.set("Settings", "nickname", nickname_var.get())
+        parser.set("Settings", "fix_mode", str(fix_mode_var.get()))
+        parser.set("Settings", "java_arguments", java_arguments_var.get())
+        with open(file_path, "w", encoding="utf-8") as config_file:
+            parser.write(config_file)
+        os._exit(0)
+
     def on_start_button():
         start_button["state"] = "disabled"
-        mod_loader = loaders_combobox.get()
-        raw_version = versions_combobox.get()
-        nickname = nickname_entry.get()
+        mod_loader = mod_loader_var.get()
+        raw_version = version_var.get()
+        nickname = nickname_var.get()
         fix_mode = fix_mode_var.get()
         java_arguments = java_arguments_var.get().split()
         returned_versions_data = resolve_version_names(raw_version, mod_loader)
+
         if raw_version not in versions_names_list:
             messagebox.showerror("Ошибка запуска", "Выберите версию из списка.")
             start_button["state"] = "normal"
@@ -117,30 +157,46 @@ def gui():
     root.geometry("300x500")
     root.resizable(width=False, height=False)
 
-    fix_mode_var = tk.IntVar()
+    version_var = tk.StringVar()
+    version_var.set(choosen_version)
+
+    mod_loader_var = tk.StringVar()
+    mod_loader_var.set(choosen_mod_loader)
+
+    nickname_var = tk.StringVar()
+    nickname_var.set(choosen_nickname)
+
+    progress_var = tk.DoubleVar()
+
     download_info = tk.StringVar()
     download_info.set("Здесь будет информация о загрузке игры.")
-    progress_var = tk.DoubleVar()
-    standart_nickname = tk.StringVar()
-    standart_nickname.set("Никнейм")
+
     java_arguments_var = tk.StringVar()
+    java_arguments_var.set(choosen_java_arguments)
+
+    fix_mode_var = tk.IntVar()
+    fix_mode_var.set(int(fix_mode_position))
 
     bg_image = tk.PhotoImage(file=resource_path("background1.png"))
     bg_label = ttk.Label(root, image=bg_image)
     bg_label.place(relwidth=1, relheight=1)
 
-    mod_loaders = ["fabric", "forge", "vanilla"]
-    loaders_combobox = ttk.Combobox(root, values=mod_loaders, width=10)
-    loaders_combobox.place(x=220, y=30, anchor="center")
-
     versions_names_list = []
     versions_list = minecraft_launcher_lib.utils.get_version_list()
     for item in versions_list:
         versions_names_list.append(item["id"])
-    versions_combobox = ttk.Combobox(root, values=versions_names_list, width=10)
+    versions_combobox = ttk.Combobox(
+        root, values=versions_names_list, width=10, textvariable=version_var
+    )
     versions_combobox.place(x=80, y=30, anchor="center")
 
-    nickname_entry = ttk.Entry(root, textvariable=standart_nickname, width=31)
+    mod_loaders = ["fabric", "forge", "vanilla"]
+    loaders_combobox = ttk.Combobox(
+        root, values=mod_loaders, width=10, textvariable=mod_loader_var
+    )
+    loaders_combobox.place(x=220, y=30, anchor="center")
+
+    nickname_entry = ttk.Entry(root, textvariable=nickname_var, width=31)
     nickname_entry.place(relx=0.5, y=70, anchor="center")
 
     start_button = ttk.Button(
@@ -158,6 +214,7 @@ def gui():
     settings_button.place(x=270, y=480, anchor="center")
 
     sv_ttk.set_theme("dark")
+    root.protocol("WM_DELETE_WINDOW", safe_config)
     root.mainloop()
 
 
@@ -274,4 +331,4 @@ def launch(
         start_button["state"] = "normal"
 
 
-gui()
+gui(*load_config())
