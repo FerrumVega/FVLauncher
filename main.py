@@ -11,18 +11,20 @@ def resolve_version_names(raw_version, mod_loader):
     name_of_version_to_install = raw_version
     name_of_version_folder = raw_version
     if mod_loader == "forge":
-        for forge_version in minecraft_launcher_lib.forge.list_forge_versions():
-            if forge_version.startswith(raw_version):
-                name_of_version_to_install = forge_version
-                name_of_version_folder = f"{name_of_version_to_install.split("-")[0]}-forge-{name_of_version_to_install.split("-")[1]}"
-                return (name_of_version_to_install, name_of_version_folder)
-        return None
-
+        if minecraft_launcher_lib.forge.find_forge_version(raw_version):
+            name_of_version_to_install = (
+                minecraft_launcher_lib.forge.find_forge_version(raw_version)
+            )
+            name_of_version_folder = f"{name_of_version_to_install.split("-")[0]}-forge-{name_of_version_to_install.split("-")[1]}"
+            return (name_of_version_to_install, name_of_version_folder)
+        else:
+            return None
     elif mod_loader == "fabric":
         if raw_version in minecraft_launcher_lib.fabric.get_all_minecraft_versions():
             name_of_version_folder = f"fabric-loader-{minecraft_launcher_lib.fabric.get_latest_loader_version()}-{name_of_version_to_install}"
             return (name_of_version_to_install, name_of_version_folder)
-        return None
+        else:
+            return None
 
     return (name_of_version_to_install, name_of_version_folder)
 
