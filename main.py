@@ -1,4 +1,4 @@
-import minecraft_launcher_lib, subprocess, os, time, ctypes, optipy, threading, sys, sv_ttk, configparser, tkinter as tk
+import minecraft_launcher_lib, subprocess, os, time, ctypes, optipy, threading, sys, sv_ttk, requests, configparser, tkinter as tk
 from tkinter import ttk, messagebox
 
 try:
@@ -20,7 +20,7 @@ def resolve_version_names(raw_version, mod_loader):
         else:
             return None
     elif mod_loader == "fabric":
-        if raw_version in minecraft_launcher_lib.fabric.get_all_minecraft_versions():
+        if minecraft_launcher_lib.fabric.is_minecraft_version_supported(raw_version):
             name_of_version_folder = f"fabric-loader-{minecraft_launcher_lib.fabric.get_latest_loader_version()}-{name_of_version_to_install}"
             return (name_of_version_to_install, name_of_version_folder)
         else:
@@ -46,11 +46,11 @@ def load_config():
         parser.set("Settings", "nickname", "Player")
         parser.set("Settings", "fix_mode", "0")
         parser.set("Settings", "java_arguments", "")
+        parser.set("Settings", "optifine", "0")
         with open(file_path, "w", encoding="utf-8") as config_file:
             parser.write(config_file)
 
     parser.read(file_path, encoding="utf-8")
-
     return (parser.get("Settings", option) for option in parser.options("Settings"))
 
 
@@ -60,6 +60,7 @@ def gui(
     choosen_nickname,
     fix_mode_position,
     choosen_java_arguments,
+    optifine_position,
 ):
     def safe_config():
         file_path = "FVLauncher.ini"
@@ -71,6 +72,7 @@ def gui(
         parser.set("Settings", "nickname", nickname_var.get())
         parser.set("Settings", "fix_mode", str(fix_mode_var.get()))
         parser.set("Settings", "java_arguments", java_arguments_var.get())
+        parser.set("Settings", "optifine", str(optifine_var.get()))
         with open(file_path, "w", encoding="utf-8") as config_file:
             parser.write(config_file)
         os._exit(0)
@@ -83,6 +85,7 @@ def gui(
         fix_mode = fix_mode_var.get()
         java_arguments = java_arguments_var.get().split()
         returned_versions_data = resolve_version_names(raw_version, mod_loader)
+        optifine = optifine_var.get()
 
         if raw_version not in versions_names_list:
             messagebox.showerror("Ошибка запуска", "Выберите версию из списка.")
@@ -102,6 +105,8 @@ def gui(
                         start_button,
                         progress_var,
                         download_info,
+                        optifine,
+                        raw_version,
                     ),
                     daemon=True,
                 ).start()
@@ -168,6 +173,9 @@ def gui(
     nickname_var = tk.StringVar()
     nickname_var.set(choosen_nickname)
 
+    optifine_var = tk.IntVar()
+    optifine_var.set(int(optifine_position))
+
     progress_var = tk.DoubleVar()
 
     download_info = tk.StringVar()
@@ -201,10 +209,13 @@ def gui(
     nickname_entry = ttk.Entry(root, textvariable=nickname_var, width=31)
     nickname_entry.place(relx=0.5, y=70, anchor="center")
 
+    optifine_checkbox = ttk.Checkbutton(root, text="optifine", variable=optifine_var)
+    optifine_checkbox.place(relx=0.5, y=110, anchor="center", width=270)
+
     start_button = ttk.Button(
         root, text="Запустить игру", command=on_start_button, width=31
     )
-    start_button.place(relx=0.5, y=110, anchor="center")
+    start_button.place(relx=0.5, y=150, anchor="center")
 
     progressbar = ttk.Progressbar(root, variable=progress_var, length=295)
     progressbar.place(relx=0.5, y=400, anchor="center")
@@ -258,7 +269,10 @@ def install_version(
             max_progress = value
         else:
             download_info.set(value)
-        percents = progress / max_progress * 100
+        try:
+            percents = progress / max_progress * 100
+        except ZeroDivisionError:
+            percents = 0
         if percents > 100.0:
             percents = 100.0
         progress_var.set(percents)
@@ -290,11 +304,27 @@ def launch(
     start_button,
     progress_var,
     download_info,
+    optifine,
+    raw_version,
 ):
     install_type, minecraft_directory, options = prepare_installation_parameters(
         mod_loader, nickname, java_arguments
     )
     try:
+        if optifine and mod_loader == "forge":
+            url_to_download_optifine = optipy.getVersion(raw_version)[raw_version][0][
+                "url"
+            ]
+            with open(
+                os.path.join(minecraft_directory, "mods", "optifine.jar"), "wb"
+            ) as jar:
+                jar.write(requests.get(url_to_download_optifine).content)
+        elif optifine and mod_loader != "forge":
+            messagebox.showwarning(
+                "Запуск без optifine",
+                "Вы запускаете версию без forge, игра будет запущена без optifine.",
+            )
+
         install_version(
             version,
             version_name,
@@ -310,7 +340,7 @@ def launch(
         )
         start_button["state"] = "normal"
         subprocess.run(
-            f'netsh advfirewall firewall add rule name="Block Minecraft" dir=out action=block program={os.path.join(minecraft_directory, "runtime\\jre-legacy\\windows-x64\\jre-legacy\\bin\\java.exe")} enable=yes',
+            f'netsh advfirewall firewall add rule name="Block Minecraft" dir=out action=block program={minecraft_launcher_lib.runtime.get_executable_path("jre-legacy", minecraft_directory)} enable=yes',
             shell=True,
             creationflags=subprocess.CREATE_NO_WINDOW,
         )
