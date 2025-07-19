@@ -1,12 +1,38 @@
-import minecraft_launcher_lib, subprocess, os, time, ctypes, optipy, threading, sys, sv_ttk, requests, configparser, tkinter as tk
+import minecraft_launcher_lib, subprocess, os, time, ctypes, threading, sys, sv_ttk, configparser, traceback, logging, tkinter as tk
 from tkinter import ttk, messagebox
+
 
 try:
     ctypes.windll.shcore.SetProcessDpiAwareness(1)
-except Exception:
+except:
     pass
 
 
+def catch_errors(func):
+    global start_button
+
+    def wrapper(*args, **kwargs):
+        try:
+            return func(*args, **kwargs)
+        except configparser.Error as e:
+            logging.error(func.__name__, traceback.format_exc())
+            messagebox.showerror(
+                "Ошибка",
+                f"Произошла критическая ошибка во время обработки конфига, удалите файл FVLauncher.ini\n{e}",
+            )
+            os._exit(1)
+        except Exception as e:
+            logging.error(func.__name__, traceback.format_exc())
+            messagebox.showerror("Ошибка", f"Произошла ошибка в {func.__name__}:\n{e}")
+            try:
+                start_button["state"] = "normal"
+            except:
+                pass
+
+    return wrapper
+
+
+@catch_errors
 def resolve_version_names(raw_version, mod_loader):
     name_of_version_to_install = raw_version
     name_of_version_folder = raw_version
@@ -29,12 +55,14 @@ def resolve_version_names(raw_version, mod_loader):
     return (name_of_version_to_install, name_of_version_folder)
 
 
+@catch_errors
 def resource_path(relative_path):
     if hasattr(sys, "_MEIPASS"):
         return os.path.join(sys._MEIPASS, relative_path)
     return os.path.abspath(relative_path)
 
 
+@catch_errors
 def load_config():
     file_path = "FVLauncher.ini"
     parser = configparser.ConfigParser()
@@ -46,7 +74,6 @@ def load_config():
         parser.set("Settings", "nickname", "Player")
         parser.set("Settings", "fix_mode", "0")
         parser.set("Settings", "java_arguments", "")
-        parser.set("Settings", "optifine", "0")
         with open(file_path, "w", encoding="utf-8") as config_file:
             parser.write(config_file)
 
@@ -54,14 +81,17 @@ def load_config():
     return (parser.get("Settings", option) for option in parser.options("Settings"))
 
 
+@catch_errors
 def gui(
     choosen_version,
     choosen_mod_loader,
     choosen_nickname,
     fix_mode_position,
     choosen_java_arguments,
-    optifine_position,
 ):
+    global start_button
+
+    @catch_errors
     def safe_config():
         file_path = "FVLauncher.ini"
         parser = configparser.ConfigParser()
@@ -72,11 +102,11 @@ def gui(
         parser.set("Settings", "nickname", nickname_var.get())
         parser.set("Settings", "fix_mode", str(fix_mode_var.get()))
         parser.set("Settings", "java_arguments", java_arguments_var.get())
-        parser.set("Settings", "optifine", str(optifine_var.get()))
         with open(file_path, "w", encoding="utf-8") as config_file:
             parser.write(config_file)
         os._exit(0)
 
+    @catch_errors
     def on_start_button():
         start_button["state"] = "disabled"
         mod_loader = mod_loader_var.get()
@@ -85,7 +115,6 @@ def gui(
         fix_mode = fix_mode_var.get()
         java_arguments = java_arguments_var.get().split()
         returned_versions_data = resolve_version_names(raw_version, mod_loader)
-        optifine = optifine_var.get()
 
         if raw_version not in versions_names_list:
             messagebox.showerror("Ошибка запуска", "Выберите версию из списка.")
@@ -93,6 +122,7 @@ def gui(
         elif returned_versions_data:
             version, version_name = returned_versions_data
             if all((mod_loader, nickname, version)):
+                download_info_label.place(relx=0.5, y=430, anchor="center")
                 threading.Thread(
                     target=launch,
                     args=(
@@ -105,7 +135,6 @@ def gui(
                         start_button,
                         progress_var,
                         download_info,
-                        optifine,
                         raw_version,
                     ),
                     daemon=True,
@@ -132,6 +161,7 @@ def gui(
             )
             start_button["state"] = "normal"
 
+    @catch_errors
     def open_settings():
         settings_window = tk.Toplevel()
         settings_window.title("Настройки")
@@ -173,13 +203,10 @@ def gui(
     nickname_var = tk.StringVar()
     nickname_var.set(choosen_nickname)
 
-    optifine_var = tk.IntVar()
-    optifine_var.set(int(optifine_position))
-
     progress_var = tk.DoubleVar()
 
     download_info = tk.StringVar()
-    download_info.set("Здесь будет информация о загрузке игры.")
+    download_info.set("Запуск...")
 
     java_arguments_var = tk.StringVar()
     java_arguments_var.set(choosen_java_arguments)
@@ -209,19 +236,15 @@ def gui(
     nickname_entry = ttk.Entry(root, textvariable=nickname_var, width=31)
     nickname_entry.place(relx=0.5, y=70, anchor="center")
 
-    optifine_checkbox = ttk.Checkbutton(root, text="optifine", variable=optifine_var)
-    optifine_checkbox.place(relx=0.5, y=110, anchor="center", width=270)
-
     start_button = ttk.Button(
         root, text="Запустить игру", command=on_start_button, width=31
     )
-    start_button.place(relx=0.5, y=150, anchor="center")
+    start_button.place(relx=0.5, y=110, anchor="center")
 
     progressbar = ttk.Progressbar(root, variable=progress_var, length=295)
     progressbar.place(relx=0.5, y=400, anchor="center")
 
     download_info_label = ttk.Label(textvariable=download_info, font=("", 8))
-    download_info_label.place(relx=0.5, y=430, anchor="center")
 
     settings_button = ttk.Button(root, text="⚙️", command=open_settings, width=3)
     settings_button.place(x=270, y=480, anchor="center")
@@ -231,6 +254,7 @@ def gui(
     root.mainloop()
 
 
+@catch_errors
 def prepare_installation_parameters(mod_loader, nickname, java_arguments):
     if mod_loader == "fabric":
         install_type = minecraft_launcher_lib.fabric.install_fabric
@@ -249,6 +273,7 @@ def prepare_installation_parameters(mod_loader, nickname, java_arguments):
     return install_type, minecraft_directory, options
 
 
+@catch_errors
 def install_version(
     version,
     version_name,
@@ -261,6 +286,7 @@ def install_version(
     progress = 0
     max_progress = 100
 
+    @catch_errors
     def track_progress(value, type=None):
         nonlocal progress, max_progress
         if type == "progress":
@@ -294,6 +320,7 @@ def install_version(
         download_info.set("Версия уже установлена, запуск...")
 
 
+@catch_errors
 def launch(
     mod_loader,
     nickname,
@@ -304,63 +331,45 @@ def launch(
     start_button,
     progress_var,
     download_info,
-    optifine,
     raw_version,
 ):
     install_type, minecraft_directory, options = prepare_installation_parameters(
         mod_loader, nickname, java_arguments
     )
-    try:
-        if optifine and mod_loader == "forge":
-            url_to_download_optifine = optipy.getVersion(raw_version)[raw_version][0][
-                "url"
-            ]
-            with open(
-                os.path.join(minecraft_directory, "mods", "optifine.jar"), "wb"
-            ) as jar:
-                jar.write(requests.get(url_to_download_optifine).content)
-        elif optifine and mod_loader != "forge":
-            messagebox.showwarning(
-                "Запуск без optifine",
-                "Вы запускаете версию без forge, игра будет запущена без optifine.",
-            )
 
-        install_version(
-            version,
-            version_name,
-            install_type,
-            fix_mode,
-            minecraft_directory,
-            progress_var,
-            download_info,
-        )
-        download_info.set("Версия установлена, запуск...")
-        minecraft_command = minecraft_launcher_lib.command.get_minecraft_command(
-            version_name, minecraft_directory, options
-        )
-        start_button["state"] = "normal"
-        subprocess.run(
-            f'netsh advfirewall firewall add rule name="Block Minecraft" dir=out action=block program={minecraft_launcher_lib.runtime.get_executable_path("jre-legacy", minecraft_directory)} enable=yes',
-            shell=True,
-            creationflags=subprocess.CREATE_NO_WINDOW,
-        )
+    install_version(
+        version,
+        version_name,
+        install_type,
+        fix_mode,
+        minecraft_directory,
+        progress_var,
+        download_info,
+    )
+    download_info.set("Версия установлена, запуск...")
+    minecraft_command = minecraft_launcher_lib.command.get_minecraft_command(
+        version_name, minecraft_directory, options
+    )
+    start_button["state"] = "normal"
+    subprocess.run(
+        f'netsh advfirewall firewall add rule name="Block Minecraft" dir=out action=block program={minecraft_launcher_lib.runtime.get_executable_path("jre-legacy", minecraft_directory)} enable=yes',
+        shell=True,
+        creationflags=subprocess.CREATE_NO_WINDOW,
+    )
 
-        subprocess.Popen(
-            minecraft_command,
-            cwd=minecraft_directory,
-            creationflags=subprocess.CREATE_NO_WINDOW,
-        )
+    subprocess.Popen(
+        minecraft_command,
+        cwd=minecraft_directory,
+        creationflags=subprocess.CREATE_NO_WINDOW,
+    )
 
-        time.sleep(20)
+    time.sleep(20)
 
-        subprocess.run(
-            f'netsh advfirewall firewall delete rule name="Block Minecraft"',
-            shell=True,
-            creationflags=subprocess.CREATE_NO_WINDOW,
-        )
-    except Exception as e:
-        messagebox.showerror("Ошибка", f"Ошибка:\n{e}")
-        start_button["state"] = "normal"
+    subprocess.run(
+        f'netsh advfirewall firewall delete rule name="Block Minecraft"',
+        shell=True,
+        creationflags=subprocess.CREATE_NO_WINDOW,
+    )
 
 
 gui(*load_config())
