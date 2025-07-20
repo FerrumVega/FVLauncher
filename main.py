@@ -1,4 +1,4 @@
-import minecraft_launcher_lib, subprocess, os, time, ctypes, threading, sys, sv_ttk, configparser, traceback, logging, tkinter as tk
+import minecraft_launcher_lib, subprocess, os, requests, time, ctypes, threading, sys, sv_ttk, configparser, traceback, logging, tkinter as tk
 from tkinter import ttk, messagebox
 
 
@@ -74,6 +74,7 @@ def load_config():
         parser.set("Settings", "nickname", "Player")
         parser.set("Settings", "fix_mode", "0")
         parser.set("Settings", "java_arguments", "")
+        parser.set("Settings", "sodium", "0")
         with open(file_path, "w", encoding="utf-8") as config_file:
             parser.write(config_file)
 
@@ -83,11 +84,12 @@ def load_config():
 
 @catch_errors
 def gui(
-    choosen_version,
-    choosen_mod_loader,
-    choosen_nickname,
+    chosen_version,
+    chosen_mod_loader,
+    chosen_nickname,
     fix_mode_position,
-    choosen_java_arguments,
+    chosen_java_arguments,
+    sodium_position,
 ):
     global start_button
 
@@ -102,9 +104,16 @@ def gui(
         parser.set("Settings", "nickname", nickname_var.get())
         parser.set("Settings", "fix_mode", str(fix_mode_var.get()))
         parser.set("Settings", "java_arguments", java_arguments_var.get())
+        parser.set("Settings", "sodium", str(sodium_var.get()))
         with open(file_path, "w", encoding="utf-8") as config_file:
             parser.write(config_file)
         os._exit(0)
+
+    @catch_errors
+    def block_sodium_checkbox(*args):
+        sodium_checkbox["state"] = (
+            "normal" if mod_loader_var.get() == "fabric" else "disabled"
+        )
 
     @catch_errors
     def on_start_button():
@@ -114,6 +123,7 @@ def gui(
         nickname = nickname_var.get()
         fix_mode = fix_mode_var.get()
         java_arguments = java_arguments_var.get().split()
+        sodium = sodium_var.get()
         returned_versions_data = resolve_version_names(raw_version, mod_loader)
 
         if raw_version not in versions_names_list:
@@ -136,6 +146,7 @@ def gui(
                         progress_var,
                         download_info,
                         raw_version,
+                        sodium,
                     ),
                     daemon=True,
                 ).start()
@@ -195,13 +206,16 @@ def gui(
     root.resizable(width=False, height=False)
 
     version_var = tk.StringVar()
-    version_var.set(choosen_version)
+    version_var.set(chosen_version)
 
     mod_loader_var = tk.StringVar()
-    mod_loader_var.set(choosen_mod_loader)
+    mod_loader_var.set(chosen_mod_loader)
 
     nickname_var = tk.StringVar()
-    nickname_var.set(choosen_nickname)
+    nickname_var.set(chosen_nickname)
+
+    sodium_var = tk.IntVar()
+    sodium_var.set(sodium_position)
 
     progress_var = tk.DoubleVar()
 
@@ -209,7 +223,7 @@ def gui(
     download_info.set("Запуск...")
 
     java_arguments_var = tk.StringVar()
-    java_arguments_var.set(choosen_java_arguments)
+    java_arguments_var.set(chosen_java_arguments)
 
     fix_mode_var = tk.IntVar()
     fix_mode_var.set(int(fix_mode_position))
@@ -223,31 +237,33 @@ def gui(
     for item in versions_list:
         versions_names_list.append(item["id"])
     versions_combobox = ttk.Combobox(
-        root, values=versions_names_list, width=10, textvariable=version_var
+        root, values=versions_names_list, textvariable=version_var
     )
-    versions_combobox.place(x=80, y=30, anchor="center")
+    versions_combobox.place(x=80, y=30, anchor="center", relwidth=0.43)
 
     mod_loaders = ["fabric", "forge", "vanilla"]
     loaders_combobox = ttk.Combobox(
-        root, values=mod_loaders, width=10, textvariable=mod_loader_var
+        root, values=mod_loaders, textvariable=mod_loader_var
     )
-    loaders_combobox.place(x=220, y=30, anchor="center")
+    loaders_combobox.place(x=220, y=30, anchor="center", relwidth=0.43)
 
-    nickname_entry = ttk.Entry(root, textvariable=nickname_var, width=31)
-    nickname_entry.place(relx=0.5, y=70, anchor="center")
+    nickname_entry = ttk.Entry(root, textvariable=nickname_var)
+    nickname_entry.place(relx=0.5, y=70, anchor="center", relwidth=0.9)
 
-    start_button = ttk.Button(
-        root, text="Запустить игру", command=on_start_button, width=31
-    )
-    start_button.place(relx=0.5, y=110, anchor="center")
+    sodium_checkbox = ttk.Checkbutton(root, text="Sodium", variable=sodium_var)
+    sodium_checkbox.place(relx=0.5, y=110, anchor="center", relwidth=0.9)
+    root.bind("<<ComboboxSelected>>", block_sodium_checkbox)
+
+    start_button = ttk.Button(root, text="Запустить игру", command=on_start_button)
+    start_button.place(relx=0.5, y=150, anchor="center", relwidth=0.9)
 
     progressbar = ttk.Progressbar(root, variable=progress_var, length=295)
     progressbar.place(relx=0.5, y=400, anchor="center")
 
     download_info_label = ttk.Label(textvariable=download_info, font=("", 8))
 
-    settings_button = ttk.Button(root, text="⚙️", command=open_settings, width=3)
-    settings_button.place(x=270, y=480, anchor="center")
+    settings_button = ttk.Button(root, text="⚙️", command=open_settings)
+    settings_button.place(x=270, y=480, anchor="center", relwidth=0.15)
 
     sv_ttk.set_theme("dark")
     root.protocol("WM_DELETE_WINDOW", safe_config)
@@ -332,10 +348,32 @@ def launch(
     progress_var,
     download_info,
     raw_version,
+    sodium,
 ):
     install_type, minecraft_directory, options = prepare_installation_parameters(
         mod_loader, nickname, java_arguments
     )
+
+    if sodium and mod_loader == "fabric":
+        sodium_path = os.path.join(minecraft_directory, "mods", "sodium.jar")
+        url = None
+        for sodium_version in requests.get(
+            "https://api.modrinth.com/v2/project/sodium/version"
+        ).json():
+            if raw_version in sodium_version["game_versions"]:
+                url = sodium_version["files"][0]["url"]
+                break
+        else:
+            messagebox.showwarning(
+                "Запуск без sodium", "Sodium недоступен на выбранной вами версии."
+            )
+        if url:
+            download_info.set("Загрузка Sodium...")
+            with open(sodium_path, "wb") as jar:
+                jar.write(requests.get(url).content)
+
+    elif os.path.isfile(sodium_path):
+        os.remove(sodium_path)
 
     install_version(
         version,
