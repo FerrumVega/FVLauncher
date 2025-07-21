@@ -1,10 +1,22 @@
-import minecraft_launcher_lib, subprocess, os, requests, time, ctypes, threading, sys, sv_ttk, configparser, traceback, logging, tkinter as tk
+import minecraft_launcher_lib
+import subprocess
+import os
+import requests
+import time
+import ctypes
+import threading
+import sys
+import sv_ttk
+import configparser
+import traceback
+import logging
+import tkinter as tk
 from tkinter import ttk, messagebox
 
 
 try:
     ctypes.windll.shcore.SetProcessDpiAwareness(1)
-except:
+except:  # noqa: E722
     pass
 
 
@@ -22,11 +34,11 @@ def catch_errors(func):
             )
             os._exit(1)
         except Exception as e:
-            logging.error(func.__name__, traceback.format_exc())
+            logging.error("%s\n%s", func.__name__, traceback.format_exc())
             messagebox.showerror("Ошибка", f"Произошла ошибка в {func.__name__}:\n{e}")
             try:
                 start_button["state"] = "normal"
-            except:
+            except:  # noqa: E722
                 pass
 
     return wrapper
@@ -64,21 +76,33 @@ def resource_path(relative_path):
 
 @catch_errors
 def load_config():
+    default_config = {
+        "version": "1.16.5",
+        "mod_loader": "fabric",
+        "nickname": "Player",
+        "fix_mode": "0",
+        "java_arguments": "",
+        "sodium": "1",
+    }
     file_path = "FVLauncher.ini"
     parser = configparser.ConfigParser()
 
     if not os.path.isfile(file_path):
         parser.add_section("Settings")
-        parser.set("Settings", "version", "1.16.5")
-        parser.set("Settings", "mod_loader", "vanilla")
-        parser.set("Settings", "nickname", "Player")
-        parser.set("Settings", "fix_mode", "0")
-        parser.set("Settings", "java_arguments", "")
-        parser.set("Settings", "sodium", "0")
+        parser["Settings"] = default_config
         with open(file_path, "w", encoding="utf-8") as config_file:
             parser.write(config_file)
+    else:
+        updated = False
+        parser.read(file_path, encoding="utf-8")
+        for key, value in default_config.items():
+            if key not in parser["Settings"]:
+                parser["Settings"][key] = value
+                updated = True
+        if updated:
+            with open(file_path, "w", encoding="utf-8") as config_file:
+                parser.write(config_file)
 
-    parser.read(file_path, encoding="utf-8")
     return (parser.get("Settings", option) for option in parser.options("Settings"))
 
 
@@ -95,18 +119,23 @@ def gui(
 
     @catch_errors
     def safe_config():
+        settings = {
+            "version": version_var.get(),
+            "mod_loader": mod_loader_var.get(),
+            "nickname": nickname_var.get(),
+            "fix_mode": str(fix_mode_var.get()),
+            "java_arguments": java_arguments_var.get(),
+            "sodium": str(sodium_var.get()),
+        }
         file_path = "FVLauncher.ini"
         parser = configparser.ConfigParser()
 
         parser.add_section("Settings")
-        parser.set("Settings", "version", version_var.get())
-        parser.set("Settings", "mod_loader", mod_loader_var.get())
-        parser.set("Settings", "nickname", nickname_var.get())
-        parser.set("Settings", "fix_mode", str(fix_mode_var.get()))
-        parser.set("Settings", "java_arguments", java_arguments_var.get())
-        parser.set("Settings", "sodium", str(sodium_var.get()))
+        for key, value in settings:
+            parser["Settings"].set("Settings", key, value)
         with open(file_path, "w", encoding="utf-8") as config_file:
             parser.write(config_file)
+        root.destroy()
         os._exit(0)
 
     @catch_errors
@@ -220,7 +249,7 @@ def gui(
     progress_var = tk.DoubleVar()
 
     download_info = tk.StringVar()
-    download_info.set("Запуск...")
+    download_info.set("Загрузка...")
 
     java_arguments_var = tk.StringVar()
     java_arguments_var.set(chosen_java_arguments)
@@ -336,6 +365,24 @@ def install_version(
         download_info.set("Версия уже установлена, запуск...")
 
 
+def download_sodium(sodium_path, raw_version, download_info):
+    url = None
+    for sodium_version in requests.get(
+        "https://api.modrinth.com/v2/project/sodium/version"
+    ).json():
+        if raw_version in sodium_version["game_versions"]:
+            url = sodium_version["files"][0]["url"]
+            break
+    else:
+        messagebox.showwarning(
+            "Запуск без sodium", "Sodium недоступен на выбранной вами версии."
+        )
+    if url:
+        download_info.set("Загрузка Sodium...")
+        with open(sodium_path, "wb") as jar:
+            jar.write(requests.get(url).content)
+
+
 @catch_errors
 def launch(
     mod_loader,
@@ -350,27 +397,14 @@ def launch(
     raw_version,
     sodium,
 ):
+
     install_type, minecraft_directory, options = prepare_installation_parameters(
         mod_loader, nickname, java_arguments
     )
+    sodium_path = os.path.join(minecraft_directory, "mods", "sodium.jar")
 
     if sodium and mod_loader == "fabric":
-        sodium_path = os.path.join(minecraft_directory, "mods", "sodium.jar")
-        url = None
-        for sodium_version in requests.get(
-            "https://api.modrinth.com/v2/project/sodium/version"
-        ).json():
-            if raw_version in sodium_version["game_versions"]:
-                url = sodium_version["files"][0]["url"]
-                break
-        else:
-            messagebox.showwarning(
-                "Запуск без sodium", "Sodium недоступен на выбранной вами версии."
-            )
-        if url:
-            download_info.set("Загрузка Sodium...")
-            with open(sodium_path, "wb") as jar:
-                jar.write(requests.get(url).content)
+        download_sodium(sodium_path, raw_version, download_info)
 
     elif os.path.isfile(sodium_path):
         os.remove(sodium_path)
@@ -384,7 +418,9 @@ def launch(
         progress_var,
         download_info,
     )
+
     download_info.set("Версия установлена, запуск...")
+
     minecraft_command = minecraft_launcher_lib.command.get_minecraft_command(
         version_name, minecraft_directory, options
     )
@@ -400,11 +436,13 @@ def launch(
         cwd=minecraft_directory,
         creationflags=subprocess.CREATE_NO_WINDOW,
     )
+    download_info.set("Игра запущена")
+    progress_var.set(100)
 
     time.sleep(20)
 
     subprocess.run(
-        f'netsh advfirewall firewall delete rule name="Block Minecraft"',
+        'netsh advfirewall firewall delete rule name="Block Minecraft"',
         shell=True,
         creationflags=subprocess.CREATE_NO_WINDOW,
     )
