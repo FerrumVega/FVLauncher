@@ -412,6 +412,9 @@ def launch(
 
     sodium_path = os.path.join(minecraft_directory, "mods", "sodium.jar")
 
+    if not os.path.isdir(os.path.join(minecraft_directory, "mods")):
+        os.mkdir(os.path.join(minecraft_directory, "mods"))
+
     if sodium and mod_loader == "fabric":
         download_sodium(sodium_path, raw_version, download_info)
 
