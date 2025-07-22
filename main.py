@@ -401,13 +401,6 @@ def launch(
     install_type, minecraft_directory, options = prepare_installation_parameters(
         mod_loader, nickname, java_arguments
     )
-    sodium_path = os.path.join(minecraft_directory, "mods", "sodium.jar")
-
-    if sodium and mod_loader == "fabric":
-        download_sodium(sodium_path, raw_version, download_info)
-
-    elif os.path.isfile(sodium_path):
-        os.remove(sodium_path)
 
     install_version(
         version,
@@ -418,6 +411,14 @@ def launch(
         progress_var,
         download_info,
     )
+
+    sodium_path = os.path.join(minecraft_directory, "mods", "sodium.jar")
+
+    if sodium and mod_loader == "fabric":
+        download_sodium(sodium_path, raw_version, download_info)
+
+    elif os.path.isfile(sodium_path):
+        os.remove(sodium_path)
 
     download_info.set("Версия установлена, запуск...")
 
