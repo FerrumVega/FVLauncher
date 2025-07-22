@@ -8,8 +8,6 @@ import threading
 import sys
 import sv_ttk
 import configparser
-import traceback
-import logging
 import tkinter as tk
 from tkinter import ttk, messagebox
 
@@ -21,23 +19,23 @@ except:  # noqa: E722
 
 
 def catch_errors(func):
-    global start_button
+    global start_button, progress_var, download_info
 
     def wrapper(*args, **kwargs):
         try:
             return func(*args, **kwargs)
-        except configparser.Error as e:
-            logging.error(func.__name__, traceback.format_exc())
-            messagebox.showerror(
-                "Ошибка",
-                f"Произошла критическая ошибка во время обработки конфига, удалите файл FVLauncher.ini\n{e}",
-            )
-            os._exit(1)
+        except FileNotFoundError as e:
+            if e.winerror == 2:
+                messagebox.showerror(
+                    "Ошибка",
+                    f"При отсутствие java, скачайте её с github лаунчера\n\n{func.__name__}:\n{e}",
+                )
         except Exception as e:
-            logging.error("%s\n%s", func.__name__, traceback.format_exc())
             messagebox.showerror("Ошибка", f"Произошла ошибка в {func.__name__}:\n{e}")
             try:
                 start_button["state"] = "normal"
+                progress_var.set(0)
+                download_info.set("Во время загрузки произошла ошибка.")
             except:  # noqa: E722
                 pass
 
@@ -103,7 +101,7 @@ def load_config():
             with open(file_path, "w", encoding="utf-8") as config_file:
                 parser.write(config_file)
 
-    return (parser.get("Settings", option) for option in parser.options("Settings"))
+    return {key: parser["Settings"][key] for key in parser.options("Settings")}
 
 
 @catch_errors
@@ -115,7 +113,7 @@ def gui(
     chosen_java_arguments,
     sodium_position,
 ):
-    global start_button
+    global start_button, progress_var, download_info
 
     @catch_errors
     def safe_config():
@@ -131,8 +129,8 @@ def gui(
         parser = configparser.ConfigParser()
 
         parser.add_section("Settings")
-        for key, value in settings:
-            parser["Settings"].set("Settings", key, value)
+        parser["Settings"] = settings
+
         with open(file_path, "w", encoding="utf-8") as config_file:
             parser.write(config_file)
         root.destroy()
@@ -449,4 +447,12 @@ def launch(
     )
 
 
-gui(*load_config())
+config = load_config()
+gui(
+    config["version"],
+    config["mod_loader"],
+    config["nickname"],
+    config["fix_mode"],
+    config["java_arguments"],
+    config["sodium"],
+)
