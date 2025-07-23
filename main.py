@@ -2,7 +2,6 @@ import minecraft_launcher_lib
 import subprocess
 import os
 import requests
-import time
 import ctypes
 import threading
 import sys
@@ -14,8 +13,18 @@ from tkinter import ttk, messagebox
 
 try:
     ctypes.windll.shcore.SetProcessDpiAwareness(1)
-except:  # noqa: E722
+except Exception:
     pass
+
+if (
+    subprocess.run(["where", "java"], capture_output=True, text=True).stdout.strip()
+    == ""
+):
+    messagebox.showerror(
+        "Java не найдена",
+        "На вашем компьюетере отсутствует java, загрузите её с github лаунчера.",
+    )
+    os._exit(1)
 
 
 def catch_errors(func):
@@ -24,19 +33,13 @@ def catch_errors(func):
     def wrapper(*args, **kwargs):
         try:
             return func(*args, **kwargs)
-        except FileNotFoundError as e:
-            if e.winerror == 2:
-                messagebox.showerror(
-                    "Ошибка",
-                    f"При отсутствие java, скачайте её с github лаунчера\n\n{func.__name__}:\n{e}",
-                )
         except Exception as e:
             messagebox.showerror("Ошибка", f"Произошла ошибка в {func.__name__}:\n{e}")
             try:
                 start_button["state"] = "normal"
                 progress_var.set(0)
                 download_info.set("Во время загрузки произошла ошибка.")
-            except:  # noqa: E722
+            except Exception:
                 pass
 
     return wrapper
@@ -299,6 +302,7 @@ def gui(
 
 @catch_errors
 def prepare_installation_parameters(mod_loader, nickname, java_arguments):
+    minecraft_directory = minecraft_launcher_lib.utils.get_minecraft_directory()
     if mod_loader == "fabric":
         install_type = minecraft_launcher_lib.fabric.install_fabric
     elif mod_loader == "forge":
@@ -306,13 +310,21 @@ def prepare_installation_parameters(mod_loader, nickname, java_arguments):
     else:
         install_type = minecraft_launcher_lib.install.install_minecraft_version
 
+    java_arguments.extend(
+        [
+            f"-javaagent:{os.path.join(minecraft_directory, "authlib-injector.jar")}=ely.by"
+        ]
+    )
+
+    java_path = subprocess.run(["where", "java"], capture_output=True, text=True)
+
     options = {
         "username": nickname,
         "uuid": "a00a0aaa-0aaa-00a0-a000-00a0a00a0aa0",
         "token": "",
         "jvmArguments": java_arguments,
+        "executablePath": java_path.stdout.strip(),
     }
-    minecraft_directory = minecraft_launcher_lib.utils.get_minecraft_directory()
     return install_type, minecraft_directory, options
 
 
@@ -359,10 +371,20 @@ def install_version(
                 "setStatus": lambda value: track_progress(value),
             },
         )
+        download_info.set("Загрузка injector...")
+        with open(
+            os.path.join(minecraft_directory, "authlib-injector.jar"), "wb"
+        ) as injector_jar:
+            injector_jar.write(
+                requests.get(
+                    "https://github.com/yushijinhun/authlib-injector/releases/download/v1.2.5/authlib-injector-1.2.5.jar"
+                ).content
+            )
     else:
         download_info.set("Версия уже установлена, запуск...")
 
 
+@catch_errors
 def download_sodium(sodium_path, raw_version, download_info):
     url = None
     for sodium_version in requests.get(
@@ -375,10 +397,12 @@ def download_sodium(sodium_path, raw_version, download_info):
         messagebox.showwarning(
             "Запуск без sodium", "Sodium недоступен на выбранной вами версии."
         )
+        return False
     if url:
         download_info.set("Загрузка Sodium...")
-        with open(sodium_path, "wb") as jar:
-            jar.write(requests.get(url).content)
+        with open(sodium_path, "wb") as sodium_jar:
+            sodium_jar.write(requests.get(url).content)
+        return True
 
 
 @catch_errors
@@ -414,8 +438,13 @@ def launch(
     if not os.path.isdir(os.path.join(minecraft_directory, "mods")):
         os.mkdir(os.path.join(minecraft_directory, "mods"))
 
-    if sodium and mod_loader == "fabric":
-        download_sodium(sodium_path, raw_version, download_info)
+    if (
+        sodium
+        and mod_loader == "fabric"
+        and not download_sodium(sodium_path, raw_version, download_info)
+        and os.path.isfile(sodium_path)
+    ):
+        os.remove(sodium_path)
 
     elif os.path.isfile(sodium_path):
         os.remove(sodium_path)
@@ -425,12 +454,8 @@ def launch(
     minecraft_command = minecraft_launcher_lib.command.get_minecraft_command(
         version_name, minecraft_directory, options
     )
+
     start_button["state"] = "normal"
-    subprocess.run(
-        f'netsh advfirewall firewall add rule name="Block Minecraft" dir=out action=block program={minecraft_launcher_lib.runtime.get_executable_path("jre-legacy", minecraft_directory)} enable=yes',
-        shell=True,
-        creationflags=subprocess.CREATE_NO_WINDOW,
-    )
 
     subprocess.Popen(
         minecraft_command,
@@ -439,14 +464,6 @@ def launch(
     )
     download_info.set("Игра запущена")
     progress_var.set(100)
-
-    time.sleep(20)
-
-    subprocess.run(
-        'netsh advfirewall firewall delete rule name="Block Minecraft"',
-        shell=True,
-        creationflags=subprocess.CREATE_NO_WINDOW,
-    )
 
 
 config = load_config()
