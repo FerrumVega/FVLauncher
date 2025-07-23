@@ -312,7 +312,7 @@ def prepare_installation_parameters(mod_loader, nickname, java_arguments):
 
     java_arguments.extend(
         [
-            f"-javaagent:{os.path.join(minecraft_directory, "authlib-injector.jar")}=ely.by"
+            f"-javaagent:{os.path.join(minecraft_directory, 'authlib-injector.jar')}=ely.by"
         ]
     )
 
