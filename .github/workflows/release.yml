@@ -24,7 +24,7 @@ jobs:
           pip install pyinstaller
 
       - name: Run build.bat
-        run: build.bat
+        run: cmd /c build.bat
 
       - name: Get Tag Name
         id: get_tag

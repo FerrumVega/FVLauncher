@@ -281,7 +281,7 @@ def gui(
     sodium_checkbox.place(relx=0.5, y=110, anchor="center", relwidth=0.9)
     root.bind("<<ComboboxSelected>>", block_sodium_checkbox)
 
-    start_button = ttk.Button(root, text="Запустить игру", command=on_start_button)
+    start_button = ttk.Button(root, text="Запуск", command=on_start_button)
     start_button.place(relx=0.5, y=150, anchor="center", relwidth=0.9)
 
     progressbar = ttk.Progressbar(root, variable=progress_var, length=295)
