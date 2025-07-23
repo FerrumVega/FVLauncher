@@ -16,9 +16,6 @@ try:
 except Exception:
     pass
 
-with open("log.log", "w") as log:
-    log.write(str(os.environ["PATH"]))
-
 java_path = None
 for path in os.environ["PATH"].split(";"):
     speculative_java_path = os.path.join(path.strip('"'), "java.exe")
