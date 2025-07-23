@@ -16,10 +16,13 @@ try:
 except Exception:
     pass
 
-if (
-    subprocess.run(["where", "java"], capture_output=True, text=True).stdout.strip()
-    == ""
-):
+java_path = None
+for path in os.environ["PATH"].split(";"):
+    speculative_java_path = os.path.join(path.strip('"'), "java.exe")
+    if os.path.isfile(speculative_java_path):
+        java_path = speculative_java_path
+        break
+if java_path is None:
     messagebox.showerror(
         "Java не найдена",
         "На вашем компьюетере отсутствует java, загрузите её с github лаунчера.",
@@ -302,6 +305,7 @@ def gui(
 
 @catch_errors
 def prepare_installation_parameters(mod_loader, nickname, java_arguments):
+    global java_path
     minecraft_directory = minecraft_launcher_lib.utils.get_minecraft_directory()
     if mod_loader == "fabric":
         install_type = minecraft_launcher_lib.fabric.install_fabric
@@ -316,14 +320,12 @@ def prepare_installation_parameters(mod_loader, nickname, java_arguments):
         ]
     )
 
-    java_path = subprocess.run(["where", "java"], capture_output=True, text=True)
-
     options = {
         "username": nickname,
         "uuid": "a00a0aaa-0aaa-00a0-a000-00a0a00a0aa0",
         "token": "",
         "jvmArguments": java_arguments,
-        "executablePath": java_path.stdout.strip(),
+        "executablePath": java_path,
     }
     return install_type, minecraft_directory, options
 
