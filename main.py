@@ -51,7 +51,7 @@ def resolve_version_names(raw_version, mod_loader):
             name_of_version_to_install = (
                 minecraft_launcher_lib.forge.find_forge_version(raw_version)
             )
-            name_of_version_folder = f"{name_of_version_to_install.split("-")[0]}-forge-{name_of_version_to_install.split("-")[1]}"
+            name_of_version_folder = f"{name_of_version_to_install.split('-')[0]}-forge-{name_of_version_to_install.split('-')[1]}"
             return (name_of_version_to_install, name_of_version_folder)
         else:
             return None
