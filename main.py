@@ -7,6 +7,7 @@ import threading
 import sys
 import sv_ttk
 import configparser
+import uuid
 import tkinter as tk
 from tkinter import ttk, messagebox
 
@@ -87,6 +88,7 @@ def load_config():
         "fix_mode": "0",
         "java_arguments": "",
         "sodium": "1",
+        "access_token": "",
     }
     file_path = "FVLauncher.ini"
     parser = configparser.ConfigParser()
@@ -118,7 +120,9 @@ def gui(
     fix_mode_position,
     chosen_java_arguments,
     sodium_position,
+    saved_access_token,
 ):
+    client_token = str(uuid.uuid5(uuid.NAMESPACE_DNS, chosen_nickname))
     global start_button, progress_var, download_info
 
     @catch_errors
@@ -130,6 +134,7 @@ def gui(
             "fix_mode": str(fix_mode_var.get()),
             "java_arguments": java_arguments_var.get(),
             "sodium": str(sodium_var.get()),
+            "access_token": access_token,
         }
         file_path = "FVLauncher.ini"
         parser = configparser.ConfigParser()
@@ -180,6 +185,8 @@ def gui(
                         download_info,
                         raw_version,
                         sodium,
+                        ely_uuid,
+                        access_token,
                     ),
                     daemon=True,
                 ).start()
@@ -209,8 +216,6 @@ def gui(
     def open_settings():
         settings_window = tk.Toplevel()
         settings_window.title("Настройки")
-        settings_window.iconbitmap(resource_path("minecraft_title.ico"))
-        root.iconphoto(True, tk.PhotoImage(file=resource_path("minecraft_title.png")))
         settings_window.geometry(root.geometry())
         settings_window.resizable(width=False, height=False)
 
@@ -230,6 +235,93 @@ def gui(
             settings_window, text="fix-mode", variable=fix_mode_var
         )
         fix_mode_checkbox.place(relx=0.5, y=110, anchor="center")
+
+    @catch_errors
+    def skins_system():
+
+        @catch_errors
+        def login():
+            nonlocal access_token, ely_uuid
+            data = requests.post(
+                "https://authserver.ely.by/auth/authenticate",
+                json={
+                    "username": ely_username_var.get(),
+                    "password": ely_password_var.get(),
+                    "clientToken": client_token,
+                    "requestUser": True,
+                },
+            )
+            if data.status_code == 200:
+                access_token = data.json()["accessToken"]
+                ely_uuid = data.json()["user"]["id"]
+                nickname_var.set(data.json()["user"]["username"])
+                nickname_entry["state"] = "disabled"
+                messagebox.showinfo(
+                    "Поздравляем!",
+                    "Теперь вы будете видеть свой скин в игре.",
+                    parent=account,
+                )
+            else:
+                messagebox.showerror(
+                    "Ошибка входа",
+                    f"Текст ошибки: {data.json()['errorMessage']}",
+                    parent=account,
+                )
+
+        @catch_errors
+        def signout():
+            nonlocal access_token, ely_uuid
+            data = requests.post(
+                "https://authserver.ely.by/auth/signout",
+                json={
+                    "username": ely_username_var.get(),
+                    "password": ely_password_var.get(),
+                },
+            )
+            access_token = ""
+            ely_uuid = ""
+            nickname_entry["state"] = "normal"
+            if data.status_code == 200:
+                messagebox.showinfo(
+                    "Выход из аккаунта", "Вы вышли из аккаунта", parent=account
+                )
+            else:
+                messagebox.showerror(
+                    "Ошибка выхода",
+                    f"Укажите данные аккаунта в поля выше.\nТекст ошибки: {data.json()['errorMessage']}",
+                    parent=account,
+                )
+
+        account = tk.Toplevel()
+        account.title("Аккаунт")
+        account.geometry(root.geometry())
+        account.resizable(width=False, height=False)
+
+        account.bg_image = tk.PhotoImage(file=resource_path("background.png"))
+        account_bg_label = ttk.Label(account, image=account.bg_image)
+        account_bg_label.place(relwidth=1, relheight=1)
+
+        ely_username_placeholder_label = ttk.Label(
+            account, text="Никнейм аккаунта ely.by"
+        )
+        ely_username_placeholder_label.place(y=40, relx=0.5, anchor="center")
+
+        ely_username = ttk.Entry(account, textvariable=ely_username_var)
+        ely_username.place(y=70, relx=0.5, anchor="center")
+
+        ely_password_placeholder_label = ttk.Label(
+            account, text="Пароль аккаунта ely.by"
+        )
+        ely_password_placeholder_label.place(y=100, relx=0.5, anchor="center")
+
+        ely_password = ttk.Entry(account, textvariable=ely_password_var)
+        ely_password.place(y=130, relx=0.5, anchor="center")
+
+        login_button = ttk.Button(account, text="Войти в аккаунт", command=login)
+        login_button.place(y=190, relx=0.5, anchor="center")
+
+        signout_button = ttk.Button(account, text="Выйти из аккаунта", command=signout)
+        signout_button.place(y=230, relx=0.5, anchor="center")
 
     root = tk.Tk()
     root.title("FVLauncher")
@@ -260,6 +352,9 @@ def gui(
 
     fix_mode_var = tk.IntVar()
     fix_mode_var.set(int(fix_mode_position))
+
+    ely_password_var = tk.StringVar()
+    ely_username_var = tk.StringVar()
 
     bg_image = tk.PhotoImage(file=resource_path("background1.png"))
     bg_label = ttk.Label(root, image=bg_image)
@@ -298,13 +393,41 @@ def gui(
     settings_button = ttk.Button(root, text="⚙️", command=open_settings)
     settings_button.place(x=270, y=480, anchor="center", relwidth=0.15)
 
+    account_button = ttk.Button(root, text="Аккаунт", command=skins_system)
+    account_button.place(x=40, y=480, anchor="center")
+
     sv_ttk.set_theme("dark")
     root.protocol("WM_DELETE_WINDOW", safe_config)
+
+    refreshed_token_info = requests.post(
+        "https://authserver.ely.by/auth/refresh",
+        json={
+            "accessToken": saved_access_token,
+            "clientToken": client_token,
+            "requestUser": True,
+        },
+    )
+
+    if saved_access_token == "" or not refreshed_token_info.status_code == 200:
+        messagebox.showwarning(
+            "Ошибка авторизации",
+            "Попробуйте заново войти в аккаунт ely.by в разделе 'Аккаунт'",
+        )
+        access_token = ""
+        ely_uuid = ""
+    else:
+        access_token = refreshed_token_info.json()["accessToken"]
+        ely_uuid = refreshed_token_info.json()["user"]["id"]
+        nickname_var.set(refreshed_token_info.json()["user"]["username"])
+        nickname_entry["state"] = "disabled"
+
     root.mainloop()
 
 
 @catch_errors
-def prepare_installation_parameters(mod_loader, nickname, java_arguments):
+def prepare_installation_parameters(
+    mod_loader, nickname, java_arguments, ely_uuid, access_token
+):
     global java_path
     minecraft_directory = minecraft_launcher_lib.utils.get_minecraft_directory()
     if mod_loader == "fabric":
@@ -322,8 +445,8 @@ def prepare_installation_parameters(mod_loader, nickname, java_arguments):
 
     options = {
         "username": nickname,
-        "uuid": "a00a0aaa-0aaa-00a0-a000-00a0a00a0aa0",
-        "token": "",
+        "uuid": ely_uuid,
+        "token": access_token,
         "jvmArguments": java_arguments,
         "executablePath": java_path,
     }
@@ -399,12 +522,10 @@ def download_sodium(sodium_path, raw_version, download_info):
         messagebox.showwarning(
             "Запуск без sodium", "Sodium недоступен на выбранной вами версии."
         )
-        return False
     if url:
         download_info.set("Загрузка Sodium...")
         with open(sodium_path, "wb") as sodium_jar:
             sodium_jar.write(requests.get(url).content)
-        return True
 
 
 @catch_errors
@@ -420,10 +541,12 @@ def launch(
     download_info,
     raw_version,
     sodium,
+    ely_uuid,
+    access_token,
 ):
 
     install_type, minecraft_directory, options = prepare_installation_parameters(
-        mod_loader, nickname, java_arguments
+        mod_loader, nickname, java_arguments, ely_uuid, access_token
     )
 
     install_version(
@@ -439,17 +562,10 @@ def launch(
 
     if not os.path.isdir(os.path.join(minecraft_directory, "mods")):
         os.mkdir(os.path.join(minecraft_directory, "mods"))
-
-    if (
-        sodium
-        and mod_loader == "fabric"
-        and not download_sodium(sodium_path, raw_version, download_info)
-        and os.path.isfile(sodium_path)
-    ):
+    if os.path.isfile(sodium_path):
         os.remove(sodium_path)
-
-    elif os.path.isfile(sodium_path):
-        os.remove(sodium_path)
+    if sodium and mod_loader == "fabric":
+        download_sodium(sodium_path, raw_version, download_info)
 
     download_info.set("Версия установлена, запуск...")
 
@@ -476,4 +592,5 @@ gui(
     config["fix_mode"],
     config["java_arguments"],
     config["sodium"],
+    config["access_token"],
 )
