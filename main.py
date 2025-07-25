@@ -8,6 +8,8 @@ import sys
 import sv_ttk
 import configparser
 import uuid
+import json
+import xml.etree.ElementTree as ET
 import tkinter as tk
 from tkinter import ttk, messagebox
 
@@ -122,7 +124,7 @@ def gui(
     sodium_position,
     saved_access_token,
 ):
-    client_token = str(uuid.uuid5(uuid.NAMESPACE_DNS, chosen_nickname))
+    client_token = str(uuid.uuid5(uuid.NAMESPACE_DNS, str(uuid.getnode())))
     global start_button, progress_var, download_info
 
     @catch_errors
@@ -162,6 +164,7 @@ def gui(
         fix_mode = fix_mode_var.get()
         java_arguments = java_arguments_var.get().split()
         sodium = sodium_var.get()
+        show_console = show_console_var.get()
         returned_versions_data = resolve_version_names(raw_version, mod_loader)
 
         if raw_version not in versions_names_list:
@@ -187,6 +190,7 @@ def gui(
                         sodium,
                         ely_uuid,
                         access_token,
+                        show_console,
                     ),
                     daemon=True,
                 ).start()
@@ -234,7 +238,12 @@ def gui(
         fix_mode_checkbox = ttk.Checkbutton(
             settings_window, text="fix-mode", variable=fix_mode_var
         )
-        fix_mode_checkbox.place(relx=0.5, y=110, anchor="center")
+        fix_mode_checkbox.place(relx=0.5, y=110, relwidth=0.6, anchor="center")
+
+        show_console_checkbox = ttk.Checkbutton(
+            settings_window, text="Запуск с консолью", variable=show_console_var
+        )
+        show_console_checkbox.place(relx=0.5, y=145, relwidth=0.6, anchor="center")
 
     @catch_errors
     def skins_system():
@@ -251,7 +260,11 @@ def gui(
                     "requestUser": True,
                 },
             )
-            if data.status_code == 200:
+            if sign_status_var.get() == "Статус: вы вошли в аккаунт":
+                messagebox.showerror(
+                    "Ошибка входа", "Сначала выйдите из аккаунта", parent=account
+                )
+            elif data.status_code == 200:
                 access_token = data.json()["accessToken"]
                 ely_uuid = data.json()["user"]["id"]
                 nickname_var.set(data.json()["user"]["username"])
@@ -261,6 +274,7 @@ def gui(
                     "Теперь вы будете видеть свой скин в игре.",
                     parent=account,
                 )
+                sign_status_var.set("Статус: вы вошли в аккаунт")
             else:
                 messagebox.showerror(
                     "Ошибка входа",
@@ -272,10 +286,10 @@ def gui(
         def signout():
             nonlocal access_token, ely_uuid
             data = requests.post(
-                "https://authserver.ely.by/auth/signout",
+                "https://authserver.ely.by/auth/invalidate",
                 json={
-                    "username": ely_username_var.get(),
-                    "password": ely_password_var.get(),
+                    "accessToken": access_token,
+                    "clientToken": client_token,
                 },
             )
             access_token = ""
@@ -285,10 +299,11 @@ def gui(
                 messagebox.showinfo(
                     "Выход из аккаунта", "Вы вышли из аккаунта", parent=account
                 )
+                sign_status_var.set("Статус: вы вышли из аккаунта")
             else:
                 messagebox.showerror(
                     "Ошибка выхода",
-                    f"Укажите данные аккаунта в поля выше.\nТекст ошибки: {data.json()['errorMessage']}",
+                    data.json()["errorMessage"],
                     parent=account,
                 )
 
@@ -321,7 +336,10 @@ def gui(
         login_button.place(y=190, relx=0.5, anchor="center")
 
         signout_button = ttk.Button(account, text="Выйти из аккаунта", command=signout)
-        signout_button.place(y=230, relx=0.5, anchor="center")
+        signout_button.place(y=225, relx=0.5, anchor="center")
+
+        sign_status_label = ttk.Label(account, textvariable=sign_status_var)
+        sign_status_label.place(y=480, relx=0.5, anchor="center")
 
     root = tk.Tk()
     root.title("FVLauncher")
@@ -353,8 +371,13 @@ def gui(
     fix_mode_var = tk.IntVar()
     fix_mode_var.set(int(fix_mode_position))
 
+    show_console_var = tk.IntVar()
+    show_console_var.set(0)
+
     ely_password_var = tk.StringVar()
     ely_username_var = tk.StringVar()
+
+    sign_status_var = tk.StringVar()
 
     bg_image = tk.PhotoImage(file=resource_path("background1.png"))
     bg_label = ttk.Label(root, image=bg_image)
@@ -380,6 +403,7 @@ def gui(
 
     sodium_checkbox = ttk.Checkbutton(root, text="Sodium", variable=sodium_var)
     sodium_checkbox.place(relx=0.5, y=110, anchor="center", relwidth=0.9)
+    block_sodium_checkbox()
     root.bind("<<ComboboxSelected>>", block_sodium_checkbox)
 
     start_button = ttk.Button(root, text="Запуск", command=on_start_button)
@@ -409,13 +433,11 @@ def gui(
     )
 
     if saved_access_token == "" or not refreshed_token_info.status_code == 200:
-        messagebox.showwarning(
-            "Ошибка авторизации",
-            "Попробуйте заново войти в аккаунт ely.by в разделе 'Аккаунт'",
-        )
+        sign_status_var.set("Статус: вы не вошли в аккаунт")
         access_token = ""
         ely_uuid = ""
     else:
+        sign_status_var.set("Статус: вы вошли в аккаунт")
         access_token = refreshed_token_info.json()["accessToken"]
         ely_uuid = refreshed_token_info.json()["user"]["id"]
         nickname_var.set(refreshed_token_info.json()["user"]["username"])
@@ -428,7 +450,6 @@ def gui(
 def prepare_installation_parameters(
     mod_loader, nickname, java_arguments, ely_uuid, access_token
 ):
-    global java_path
     minecraft_directory = minecraft_launcher_lib.utils.get_minecraft_directory()
     if mod_loader == "fabric":
         install_type = minecraft_launcher_lib.fabric.install_fabric
@@ -436,21 +457,78 @@ def prepare_installation_parameters(
         install_type = minecraft_launcher_lib.forge.install_forge_version
     else:
         install_type = minecraft_launcher_lib.install.install_minecraft_version
-
-    java_arguments.extend(
-        [
-            f"-javaagent:{os.path.join(minecraft_directory, 'authlib-injector.jar')}=ely.by"
-        ]
-    )
-
     options = {
         "username": nickname,
         "uuid": ely_uuid,
         "token": access_token,
         "jvmArguments": java_arguments,
-        "executablePath": java_path,
     }
     return install_type, minecraft_directory, options
+
+
+@catch_errors
+def download_injector(raw_version, minecraft_directory):
+    authlib_version = None
+    with open(
+        os.path.join(
+            minecraft_directory, "versions", raw_version, f"{raw_version}.json"
+        )
+    ) as file_with_downloads:
+        for lib in json.load(file_with_downloads)["libraries"]:
+            if lib["name"].startswith("com.mojang:authlib:"):
+                authlib_version = lib["name"].split(":")[-1]
+                break
+    if authlib_version is not None:
+        base_url = "https://maven.ely.by/releases/by/ely/authlib"
+        xml_data = requests.get(f"{base_url}/maven-metadata.xml").content.decode(
+            "utf-8"
+        )
+        found = False
+        for version in ET.fromstring(xml_data).findall("./versioning/versions/version")[
+            ::-1
+        ]:
+            if authlib_version in version.text:
+                found = True
+                break
+        if found:
+            with open(
+                os.path.join(
+                    minecraft_directory,
+                    "libraries",
+                    "com",
+                    "mojang",
+                    "authlib",
+                    authlib_version,
+                    f"authlib-{authlib_version}.jar",
+                ),
+                "wb",
+            ) as jar:
+                jar.write(
+                    requests.get(
+                        f"{base_url}/{version.text}/authlib-{version.text}.jar"
+                    ).content
+                )
+            java_agent = False
+        else:
+            messagebox.showwarning(
+                "Ошибка скина",
+                "На данной версии нет патченной authlib. Скин будет отображен только в одиночной игре и на серверах с поддержкой ely.by",
+            )
+            with open(
+                os.path.join(minecraft_directory, "authlib-injector.jar"), "wb"
+            ) as injector_jar:
+                injector_jar.write(
+                    requests.get(
+                        "https://github.com/yushijinhun/authlib-injector/releases/download/v1.2.5/authlib-injector-1.2.5.jar"
+                    ).content
+                )
+            java_agent = True
+    else:
+        messagebox.showwarning(
+            "Ошибка скина", "На данной версии нет authlib, скины не поддерживаются."
+        )
+        java_agent = False
+    return java_agent
 
 
 @catch_errors
@@ -462,6 +540,7 @@ def install_version(
     minecraft_directory,
     progress_var,
     download_info,
+    raw_version,
 ):
     progress = 0
     max_progress = 100
@@ -497,14 +576,8 @@ def install_version(
             },
         )
         download_info.set("Загрузка injector...")
-        with open(
-            os.path.join(minecraft_directory, "authlib-injector.jar"), "wb"
-        ) as injector_jar:
-            injector_jar.write(
-                requests.get(
-                    "https://github.com/yushijinhun/authlib-injector/releases/download/v1.2.5/authlib-injector-1.2.5.jar"
-                ).content
-            )
+        if download_injector(raw_version, minecraft_directory):
+            return True
     else:
         download_info.set("Версия уже установлена, запуск...")
 
@@ -543,13 +616,14 @@ def launch(
     sodium,
     ely_uuid,
     access_token,
+    show_console,
 ):
 
     install_type, minecraft_directory, options = prepare_installation_parameters(
         mod_loader, nickname, java_arguments, ely_uuid, access_token
     )
 
-    install_version(
+    if install_version(
         version,
         version_name,
         install_type,
@@ -557,7 +631,11 @@ def launch(
         minecraft_directory,
         progress_var,
         download_info,
-    )
+        raw_version,
+    ):
+        options["jvmArguments"].append(
+            f"-javaagent:{os.path.join(minecraft_directory, 'authlib-injector.jar')}=ely.by"
+        )
     sodium_path = os.path.join(minecraft_directory, "mods", "sodium.jar")
 
     if not os.path.isdir(os.path.join(minecraft_directory, "mods")):
@@ -578,7 +656,7 @@ def launch(
     subprocess.Popen(
         minecraft_command,
         cwd=minecraft_directory,
-        creationflags=subprocess.CREATE_NO_WINDOW,
+        **{"creationflags": subprocess.CREATE_NO_WINDOW} if not show_console else {},
     )
     download_info.set("Игра запущена")
     progress_var.set(100)
