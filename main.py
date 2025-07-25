@@ -91,6 +91,8 @@ def load_config():
         "java_arguments": "",
         "sodium": "1",
         "access_token": "",
+        "ely_uuid": "",
+        "show_console": "0",
     }
     file_path = "FVLauncher.ini"
     parser = configparser.ConfigParser()
@@ -123,6 +125,8 @@ def gui(
     chosen_java_arguments,
     sodium_position,
     saved_access_token,
+    saved_ely_uuid,
+    show_console_position,
 ):
     client_token = str(uuid.uuid5(uuid.NAMESPACE_DNS, str(uuid.getnode())))
     global start_button, progress_var, download_info
@@ -137,6 +141,8 @@ def gui(
             "java_arguments": java_arguments_var.get(),
             "sodium": str(sodium_var.get()),
             "access_token": access_token,
+            "ely_uuid": ely_uuid,
+            "show_console": show_console_var.get(),
         }
         file_path = "FVLauncher.ini"
         parser = configparser.ConfigParser()
@@ -341,6 +347,45 @@ def gui(
         sign_status_label = ttk.Label(account, textvariable=sign_status_var)
         sign_status_label.place(y=480, relx=0.5, anchor="center")
 
+    @catch_errors
+    def auto_login():
+        if saved_ely_uuid and saved_access_token:
+            valid_token_info = requests.post(
+                "https://authserver.ely.by/auth/validate",
+                json={"accessToken": saved_access_token},
+            )
+            if valid_token_info.status_code != 200:
+                refreshed_token_info = requests.post(
+                    "https://authserver.ely.by/auth/refresh",
+                    json={
+                        "accessToken": saved_access_token,
+                        "clientToken": client_token,
+                        "requestUser": True,
+                    },
+                )
+                if refreshed_token_info.status_code != 200:
+                    access_token = ""
+                    ely_uuid = ""
+                    sign_status_var.set("Статус: вы не вошли в аккаунт")
+                    return access_token, ely_uuid
+                else:
+                    access_token = refreshed_token_info.json()["accessToken"]
+                    ely_uuid = refreshed_token_info.json()["user"]["id"]
+                    username = refreshed_token_info.json()["user"]["username"]
+                    nickname_var.set(username)
+                    nickname_entry["state"] = "disabled"
+                    sign_status_var.set("Статус: вы вошли в аккаунт")
+                    return access_token, ely_uuid
+            else:
+                username = chosen_nickname
+                nickname_var.set(username)
+                nickname_entry["state"] = "disabled"
+                sign_status_var.set("Статус: вы вошли в аккаунт")
+                return saved_access_token, saved_ely_uuid
+        else:
+            sign_status_var.set("Статус: вы не вошли в аккаунт")
+            return saved_access_token, saved_ely_uuid
+
     root = tk.Tk()
     root.title("FVLauncher")
     root.iconbitmap(resource_path("minecraft_title.ico"))
@@ -372,7 +417,7 @@ def gui(
     fix_mode_var.set(int(fix_mode_position))
 
     show_console_var = tk.IntVar()
-    show_console_var.set(0)
+    show_console_var.set(int(show_console_position))
 
     ely_password_var = tk.StringVar()
     ely_username_var = tk.StringVar()
@@ -423,25 +468,7 @@ def gui(
     sv_ttk.set_theme("dark")
     root.protocol("WM_DELETE_WINDOW", safe_config)
 
-    refreshed_token_info = requests.post(
-        "https://authserver.ely.by/auth/refresh",
-        json={
-            "accessToken": saved_access_token,
-            "clientToken": client_token,
-            "requestUser": True,
-        },
-    )
-
-    if saved_access_token == "" or not refreshed_token_info.status_code == 200:
-        sign_status_var.set("Статус: вы не вошли в аккаунт")
-        access_token = ""
-        ely_uuid = ""
-    else:
-        sign_status_var.set("Статус: вы вошли в аккаунт")
-        access_token = refreshed_token_info.json()["accessToken"]
-        ely_uuid = refreshed_token_info.json()["user"]["id"]
-        nickname_var.set(refreshed_token_info.json()["user"]["username"])
-        nickname_entry["state"] = "disabled"
+    access_token, ely_uuid = auto_login()
 
     root.mainloop()
 
@@ -621,6 +648,7 @@ def launch(
     access_token,
     show_console,
 ):
+    global java_path
 
     install_type, minecraft_directory, options = prepare_installation_parameters(
         mod_loader, nickname, java_arguments, ely_uuid, access_token
@@ -639,6 +667,7 @@ def launch(
         options["jvmArguments"].append(
             f"-javaagent:{os.path.join(minecraft_directory, 'authlib-injector.jar')}=ely.by"
         )
+        options["executablePath"] = java_path
     sodium_path = os.path.join(minecraft_directory, "mods", "sodium.jar")
 
     if not os.path.isdir(os.path.join(minecraft_directory, "mods")):
@@ -674,4 +703,6 @@ gui(
     config["java_arguments"],
     config["sodium"],
     config["access_token"],
+    config["ely_uuid"],
+    config["show_console"],
 )
