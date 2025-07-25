@@ -588,7 +588,10 @@ def download_sodium(sodium_path, raw_version, download_info):
     for sodium_version in requests.get(
         "https://api.modrinth.com/v2/project/sodium/version"
     ).json():
-        if raw_version in sodium_version["game_versions"]:
+        if (
+            raw_version in sodium_version["game_versions"]
+            and "fabric" in sodium_version["loaders"]
+        ):
             url = sodium_version["files"][0]["url"]
             break
     else:
