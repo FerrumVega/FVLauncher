@@ -400,8 +400,8 @@ def gui(
 
     root = tk.Tk()
     root.title("FVLauncher")
-    root.iconbitmap(resource_path("minecraft_title.ico"))
-    root.iconphoto(True, tk.PhotoImage(file=resource_path("minecraft_title.png")))
+    icon = tk.PhotoImage(file=resource_path("minecraft_title.png"))
+    root.iconphoto(True, icon)
     root.geometry("300x500")
     root.resizable(width=False, height=False)
 

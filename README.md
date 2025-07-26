@@ -9,7 +9,7 @@
 ## Загрузка лаунчера
 
 1. Перейдите в раздел [releases](https://github.com/FerrumVega/FVLauncher/releases) и скачайте main.py из последнего релиза
-2. Скачайте [java](https://adoptium.net/temurin/releases?version=17&os=any&arch=any)
+2. Скачайте [java](https://adoptium.net/)
 
 ## Клонирование репозитория
 
