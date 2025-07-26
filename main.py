@@ -9,6 +9,7 @@ import sv_ttk
 import configparser
 import uuid
 import json
+import winshell
 import xml.etree.ElementTree as ET
 import tkinter as tk
 from tkinter import ttk, messagebox
@@ -98,6 +99,12 @@ def load_config():
     file_path = f"{appdata_path}\\FVLauncher\\FVLauncher.ini"
     if not os.path.isdir(f"{appdata_path}\\FVLauncher"):
         os.mkdir(f"{appdata_path}\\FVLauncher")
+        if getattr(sys, "frozen", False):
+            winshell.CreateShortcut(
+                Path="C:\\Users\\user\\Desktop\\FVLauncher.lnk",
+                Target=sys.executable,
+                Icon=(resource_path("minecraft_title.ico"), 0),
+            )
     parser = configparser.ConfigParser()
 
     if not os.path.isfile(file_path):
