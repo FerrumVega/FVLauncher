@@ -155,7 +155,7 @@ def gui(
             "show_console": show_console_var.get(),
         }
         appdata_path = os.environ["APPDATA"]
-        file_path = os.path.join(appdata_path, "FVLauncher.ini")
+        file_path = os.path.join(appdata_path, "FVLauncher", "FVLauncher.ini")
         parser = configparser.ConfigParser()
 
         parser.add_section("Settings")
@@ -163,6 +163,7 @@ def gui(
 
         with open(file_path, "w", encoding="utf-8") as config_file:
             parser.write(config_file)
+        root.quit()
         root.destroy()
         os._exit(0)
 
