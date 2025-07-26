@@ -1,7 +1,9 @@
-﻿certifi==2025.7.14
+certifi==2025.7.14
 charset-normalizer==3.4.2
 idna==3.10
 minecraft-launcher-lib==7.1
+pywin32==311
 requests==2.32.4
 sv_ttk==2.6.1
 urllib3==2.5.0
+winshell==0.6
