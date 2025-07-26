@@ -94,7 +94,10 @@ def load_config():
         "ely_uuid": "",
         "show_console": "0",
     }
-    file_path = "FVLauncher.ini"
+    appdata_path = os.environ["APPDATA"]
+    file_path = f"{appdata_path}\\FVLauncher\\FVLauncher.ini"
+    if not os.path.isdir(f"{appdata_path}\\FVLauncher"):
+        os.mkdir(f"{appdata_path}\\FVLauncher")
     parser = configparser.ConfigParser()
 
     if not os.path.isfile(file_path):
@@ -489,6 +492,7 @@ def prepare_installation_parameters(
         "uuid": ely_uuid,
         "token": access_token,
         "jvmArguments": java_arguments,
+        "executablePath": java_path,
     }
     return install_type, minecraft_directory, options
 
@@ -667,7 +671,6 @@ def launch(
         options["jvmArguments"].append(
             f"-javaagent:{os.path.join(minecraft_directory, 'authlib-injector.jar')}=ely.by"
         )
-        options["executablePath"] = java_path
     sodium_path = os.path.join(minecraft_directory, "mods", "sodium.jar")
 
     if not os.path.isdir(os.path.join(minecraft_directory, "mods")):
