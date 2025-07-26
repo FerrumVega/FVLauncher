@@ -96,12 +96,12 @@ def load_config():
         "show_console": "0",
     }
     appdata_path = os.environ["APPDATA"]
-    file_path = f"{appdata_path}\\FVLauncher\\FVLauncher.ini"
-    if not os.path.isdir(f"{appdata_path}\\FVLauncher"):
-        os.mkdir(f"{appdata_path}\\FVLauncher")
+    file_path = os.path.join(appdata_path, "FVLauncher", "FVLauncher.ini")
+    if not os.path.isdir(os.path.join(appdata_path, "FVLauncher")):
+        os.mkdir(os.path.join(appdata_path, "FVLauncher"))
         if getattr(sys, "frozen", False):
             winshell.CreateShortcut(
-                Path="C:\\Users\\user\\Desktop\\FVLauncher.lnk",
+                Path=os.path.join(winshell.desktop(), "FVLauncher.lnk"),
                 Target=sys.executable,
                 Icon=(resource_path("minecraft_title.ico"), 0),
             )
@@ -154,7 +154,8 @@ def gui(
             "ely_uuid": ely_uuid,
             "show_console": show_console_var.get(),
         }
-        file_path = "FVLauncher.ini"
+        appdata_path = os.environ["APPDATA"]
+        file_path = os.path.join(appdata_path, "FVLauncher.ini")
         parser = configparser.ConfigParser()
 
         parser.add_section("Settings")
