@@ -4,13 +4,12 @@ import os
 import requests
 import ctypes
 import threading
-import sys
 import sv_ttk
 import configparser
 import uuid
 import json
-import winshell
 import shutil
+import sys
 import xml.etree.ElementTree as ET
 import tkinter as tk
 from tkinter import ttk, messagebox
@@ -77,14 +76,7 @@ def resolve_version_names(raw_version, mod_loader):
 
 
 @catch_errors
-def resource_path(relative_path):
-    if hasattr(sys, "_MEIPASS"):
-        return os.path.join(sys._MEIPASS, relative_path)
-    return os.path.abspath(relative_path)
-
-
-@catch_errors
-def load_config():
+def load_config(appdata_path):
     default_config = {
         "version": "1.16.5",
         "mod_loader": "fabric",
@@ -96,23 +88,21 @@ def load_config():
         "ely_uuid": "",
         "show_console": "0",
     }
-    appdata_path = os.environ["APPDATA"]
+    launcher_directory = os.path.join(appdata_path, "FVLauncher")
+    if not os.path.isdir(launcher_directory):
+        os.mkdir(launcher_directory)
+
+    if not getattr(sys, "frozen", False):
+        for file in (
+            "minecraft_title.png",
+            "minecraft_title.ico",
+            "background.png",
+            "background1.png",
+        ):
+            if not os.path.isfile(os.path.join(appdata_path, file)):
+                shutil.copy2(file, launcher_directory)
+
     file_path = os.path.join(appdata_path, "FVLauncher", "FVLauncher.ini")
-    if not os.path.isdir(os.path.join(appdata_path, "FVLauncher")):
-        os.mkdir(os.path.join(appdata_path, "FVLauncher"))
-        shutil.copy2(
-            resource_path("minecraft_title.ico"),
-            os.path.join(appdata_path, "FVLauncher", "minecraft_title.ico"),
-        )
-        if getattr(sys, "frozen", False):
-            winshell.CreateShortcut(
-                Path=os.path.join(winshell.desktop(), "FVLauncher.lnk"),
-                Target=sys.executable,
-                Icon=(
-                    os.path.join(appdata_path, "FVLauncher", "minecraft_title.ico"),
-                    0,
-                ),
-            )
     parser = configparser.ConfigParser()
 
     if not os.path.isfile(file_path):
@@ -145,6 +135,7 @@ def gui(
     saved_access_token,
     saved_ely_uuid,
     show_console_position,
+    appdata_path,
 ):
     client_token = str(uuid.uuid5(uuid.NAMESPACE_DNS, str(uuid.getnode())))
     global start_button, progress_var, download_info
@@ -249,7 +240,9 @@ def gui(
         settings_window.geometry(root.geometry())
         settings_window.resizable(width=False, height=False)
 
-        settings_window.bg_image = tk.PhotoImage(file=resource_path("background.png"))
+        settings_window.bg_image = tk.PhotoImage(
+            file=os.path.join(appdata_path, "FVLauncher", "background.png")
+        )
         settings_bg_label = ttk.Label(settings_window, image=settings_window.bg_image)
         settings_bg_label.place(relwidth=1, relheight=1)
 
@@ -338,7 +331,9 @@ def gui(
         account.geometry(root.geometry())
         account.resizable(width=False, height=False)
 
-        account.bg_image = tk.PhotoImage(file=resource_path("background.png"))
+        account.bg_image = tk.PhotoImage(
+            file=os.path.join(appdata_path, "FVLauncher", "background.png")
+        )
         account_bg_label = ttk.Label(account, image=account.bg_image)
         account_bg_label.place(relwidth=1, relheight=1)
 
@@ -408,7 +403,9 @@ def gui(
 
     root = tk.Tk()
     root.title("FVLauncher")
-    icon = tk.PhotoImage(file=resource_path("minecraft_title.png"))
+    icon = tk.PhotoImage(
+        file=os.path.join(appdata_path, "FVLauncher", "minecraft_title.png")
+    )
     root.iconphoto(True, icon)
     root.geometry("300x500")
     root.resizable(width=False, height=False)
@@ -444,7 +441,9 @@ def gui(
 
     sign_status_var = tk.StringVar()
 
-    bg_image = tk.PhotoImage(file=resource_path("background1.png"))
+    bg_image = tk.PhotoImage(
+        file=os.path.join(appdata_path, "FVLauncher", "background1.png")
+    )
     bg_label = ttk.Label(root, image=bg_image)
     bg_label.place(relwidth=1, relheight=1)
 
@@ -714,7 +713,8 @@ def launch(
     progress_var.set(100)
 
 
-config = load_config()
+appdata_path = os.environ["APPDATA"]
+config = load_config(appdata_path)
 gui(
     config["version"],
     config["mod_loader"],
@@ -725,4 +725,5 @@ gui(
     config["access_token"],
     config["ely_uuid"],
     config["show_console"],
+    appdata_path,
 )

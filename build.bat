@@ -1,1 +1,20 @@
-pyinstaller --add-data "background1.png;." --add-data "background.png;." --add-data "minecraft_title.ico;." --add-data "minecraft_title.png;." --icon=minecraft_title.ico --onefile --noconsole main.py
+@echo off
+setlocal enabledelayedexpansion
+
+for /f %%v in ('git describe --tags') do set TAG=%%v
+
+powershell -Command "(Get-Content installer.iss) -replace 'MyAppVersion \"[^\"]+\"', 'MyAppVersion \"%TAG%\"' | Set-Content installer.iss"
+
+python -m nuitka ^
+    --onefile ^
+    --windows-icon-from-ico=minecraft_title.ico ^
+    --output-dir=dist ^
+    main.py
+
+if %ERRORLEVEL% neq 0 exit /b 1
+
+iscc installer.iss
+
+if %ERRORLEVEL% neq 0 exit /b 1
+
+endlocal
