@@ -17,7 +17,7 @@ python -m nuitka ^
     --windows-icon-from-ico=minecraft_title.ico ^
     --output-dir=dist ^
     --verbose ^
-    --enable-plugin-enable-internal-dependency-uploads=yes ^
+    --assume-yes-for-downloads ^
     main.py
 
 if %ERRORLEVEL% neq 0 exit /b 1
