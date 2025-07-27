@@ -737,5 +737,5 @@ gui(
     config[0]["access_token"],
     config[0]["ely_uuid"],
     config[0]["show_console"],
-    config[2],
+    config[1],
 )
