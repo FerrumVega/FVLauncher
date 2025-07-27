@@ -1,8 +1,10 @@
 @echo off
 setlocal enabledelayedexpansion
 
+rem Получаем тег из git
 for /f %%v in ('git describe --tags') do set TAG=%%v
 
+rem Обновляем версию в инсталляторе
 >installer_tmp.iss (
   for /f "usebackq delims=" %%l in ("installer.iss") do (
     set "line=%%l"
@@ -16,17 +18,12 @@ for /f %%v in ('git describe --tags') do set TAG=%%v
 )
 move /Y installer_tmp.iss installer.iss >nul
 
-python -m nuitka ^
-  --onefile ^
-  --enable-plugin=tk-inter ^
-  --windows-icon-from-ico=minecraft_title.ico ^
-  --output-dir=dist ^
-  --verbose ^
-  --assume-yes-for-downloads ^
-  main.py
+rem Собираем с PyInstaller
+pyinstaller --onefile --windowed --icon=minecraft_title.ico --distpath dist main.py
 
 if %ERRORLEVEL% neq 0 exit /b 1
 
+rem Компиляция инсталлятора Inno Setup
 iscc installer.iss
 
 if %ERRORLEVEL% neq 0 exit /b 1

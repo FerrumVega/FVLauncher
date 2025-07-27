@@ -22,12 +22,12 @@ jobs:
         run: |
           python -m pip install --upgrade pip
           pip install -r requirements.txt
-          pip install nuitka
+          pip install pyinstaller
 
       - name: Install Inno Setup
         run: choco install innosetup --no-progress
 
-      - name: Build with Nuitka and Inno Setup
+      - name: Build with PyInstaller and Inno Setup
         run: cmd /c build.bat
 
       - name: Get tag name
