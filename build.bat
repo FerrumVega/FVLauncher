@@ -13,8 +13,10 @@ move /Y installer_tmp.iss installer.iss >nul
 
 python -m nuitka ^
     --onefile ^
+    --enable-plugin=tk-inter ^
     --windows-icon-from-ico=minecraft_title.ico ^
     --output-dir=dist ^
+    --verbose ^
     main.py
 
 if %ERRORLEVEL% neq 0 exit /b 1
