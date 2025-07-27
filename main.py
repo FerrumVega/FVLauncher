@@ -8,7 +8,6 @@ import sv_ttk
 import configparser
 import uuid
 import json
-import shutil
 import sys
 import xml.etree.ElementTree as ET
 import tkinter as tk
@@ -76,7 +75,7 @@ def resolve_version_names(raw_version, mod_loader):
 
 
 @catch_errors
-def load_config(appdata_path):
+def load_config(path_to_exe):
     default_config = {
         "version": "1.16.5",
         "mod_loader": "fabric",
@@ -88,40 +87,42 @@ def load_config(appdata_path):
         "ely_uuid": "",
         "show_console": "0",
     }
-    launcher_directory = os.path.join(appdata_path, "FVLauncher")
-    if not os.path.isdir(launcher_directory):
-        os.mkdir(launcher_directory)
+    launcher_is_exe = getattr(sys, "frozen", False)
+    launcher_directory = (
+        os.path.join(
+            path_to_exe,
+            "FVLauncher",
+        )
+        if launcher_is_exe
+        else ""
+    )
 
-    if not getattr(sys, "frozen", False):
-        for file in (
-            "minecraft_title.png",
-            "minecraft_title.ico",
-            "background.png",
-            "background1.png",
-        ):
-            if not os.path.isfile(os.path.join(appdata_path, file)):
-                shutil.copy2(file, launcher_directory)
-
-    file_path = os.path.join(appdata_path, "FVLauncher", "FVLauncher.ini")
+    config_path = os.path.join(
+        launcher_directory,
+        "FVLauncher.ini",
+    )
     parser = configparser.ConfigParser()
 
-    if not os.path.isfile(file_path):
+    if not os.path.isfile(config_path):
         parser.add_section("Settings")
         parser["Settings"] = default_config
-        with open(file_path, "w", encoding="utf-8") as config_file:
+        with open(config_path, "w", encoding="utf-8") as config_file:
             parser.write(config_file)
     else:
         updated = False
-        parser.read(file_path, encoding="utf-8")
+        parser.read(config_path, encoding="utf-8")
         for key, value in default_config.items():
             if key not in parser["Settings"]:
                 parser["Settings"][key] = value
                 updated = True
         if updated:
-            with open(file_path, "w", encoding="utf-8") as config_file:
+            with open(config_path, "w", encoding="utf-8") as config_file:
                 parser.write(config_file)
 
-    return {key: parser["Settings"][key] for key in parser.options("Settings")}
+    return (
+        {key: parser["Settings"][key] for key in parser.options("Settings")},
+        launcher_directory,
+    )
 
 
 @catch_errors
@@ -135,7 +136,7 @@ def gui(
     saved_access_token,
     saved_ely_uuid,
     show_console_position,
-    appdata_path,
+    launcher_directory,
 ):
     client_token = str(uuid.uuid5(uuid.NAMESPACE_DNS, str(uuid.getnode())))
     global start_button, progress_var, download_info
@@ -153,14 +154,16 @@ def gui(
             "ely_uuid": ely_uuid,
             "show_console": show_console_var.get(),
         }
-        appdata_path = os.environ["APPDATA"]
-        file_path = os.path.join(appdata_path, "FVLauncher", "FVLauncher.ini")
+        config_path = os.path.join(
+            launcher_directory,
+            "FVLauncher.ini",
+        )
         parser = configparser.ConfigParser()
 
         parser.add_section("Settings")
         parser["Settings"] = settings
 
-        with open(file_path, "w", encoding="utf-8") as config_file:
+        with open(config_path, "w", encoding="utf-8") as config_file:
             parser.write(config_file)
         root.quit()
         root.destroy()
@@ -241,7 +244,11 @@ def gui(
         settings_window.resizable(width=False, height=False)
 
         settings_window.bg_image = tk.PhotoImage(
-            file=os.path.join(appdata_path, "FVLauncher", "background.png")
+            file=os.path.join(
+                launcher_directory,
+                "assets",
+                "background.png",
+            )
         )
         settings_bg_label = ttk.Label(settings_window, image=settings_window.bg_image)
         settings_bg_label.place(relwidth=1, relheight=1)
@@ -332,7 +339,11 @@ def gui(
         account.resizable(width=False, height=False)
 
         account.bg_image = tk.PhotoImage(
-            file=os.path.join(appdata_path, "FVLauncher", "background.png")
+            file=os.path.join(
+                launcher_directory,
+                "assets",
+                "background.png",
+            )
         )
         account_bg_label = ttk.Label(account, image=account.bg_image)
         account_bg_label.place(relwidth=1, relheight=1)
@@ -404,7 +415,11 @@ def gui(
     root = tk.Tk()
     root.title("FVLauncher")
     icon = tk.PhotoImage(
-        file=os.path.join(appdata_path, "FVLauncher", "minecraft_title.png")
+        file=os.path.join(
+            launcher_directory,
+            "assets",
+            "minecraft_title.png",
+        )
     )
     root.iconphoto(True, icon)
     root.geometry("300x500")
@@ -442,7 +457,11 @@ def gui(
     sign_status_var = tk.StringVar()
 
     bg_image = tk.PhotoImage(
-        file=os.path.join(appdata_path, "FVLauncher", "background1.png")
+        file=os.path.join(
+            launcher_directory,
+            "assets",
+            "background1.png",
+        )
     )
     bg_label = ttk.Label(root, image=bg_image)
     bg_label.place(relwidth=1, relheight=1)
@@ -713,17 +732,17 @@ def launch(
     progress_var.set(100)
 
 
-appdata_path = os.environ["APPDATA"]
-config = load_config(appdata_path)
+path_to_exe = os.path.abspath(sys.executable)
+config = load_config(path_to_exe)
 gui(
-    config["version"],
-    config["mod_loader"],
-    config["nickname"],
-    config["fix_mode"],
-    config["java_arguments"],
-    config["sodium"],
-    config["access_token"],
-    config["ely_uuid"],
-    config["show_console"],
-    appdata_path,
+    config[0]["version"],
+    config[0]["mod_loader"],
+    config[0]["nickname"],
+    config[0]["fix_mode"],
+    config[0]["java_arguments"],
+    config[0]["sodium"],
+    config[0]["access_token"],
+    config[0]["ely_uuid"],
+    config[0]["show_console"],
+    config[2],
 )
