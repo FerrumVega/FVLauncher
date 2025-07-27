@@ -1,5 +1,5 @@
 #define MyAppName "FVLauncher"
-#define MyAppVersion "1.0.0"
+#define MyAppVersion "1.0.0"   ; начальная версия, будет заменена в батнике
 #define MyAppPublisher "FerrumVega"
 #define MyAppURL "https://www.github.com/FerrumVega/FVLauncher"
 #define MyAppExeName "main.exe"
