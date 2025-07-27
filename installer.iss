@@ -11,7 +11,7 @@ DisableDirPage=yes
 DisableProgramGroupPage=yes
 LicenseFile=LICENSE
 OutputBaseFilename=FVLauncher_Installer
-SetupIconFile=minecraft_title.ico
+SetupIconFile=assets\minecraft_title.ico
 SolidCompression=yes
 WizardStyle=modern
 
@@ -23,10 +23,10 @@ Name: "desktopicon"; Description: "{cm:CreateDesktopIcon}"; GroupDescription: "{
 
 [Files]
 Source: "dist\main.exe"; DestDir: "{app}"; Flags: ignoreversion
-Source: "background.png"; DestDir: "{app}\assets"; Flags: ignoreversion
-Source: "background1.png"; DestDir: "{app}\assets"; Flags: ignoreversion
-Source: "minecraft_title.ico"; DestDir: "{app}\assets"; Flags: ignoreversion
-Source: "minecraft_title.png"; DestDir: "{app}\assets"; Flags: ignoreversion
+Source: "assets\background.png"; DestDir: "{app}\assets"; Flags: ignoreversion
+Source: "assets\background1.png"; DestDir: "{app}\assets"; Flags: ignoreversion
+Source: "assets\minecraft_title.ico"; DestDir: "{app}\assets"; Flags: ignoreversion
+Source: "assets\minecraft_title.png"; DestDir: "{app}\assets"; Flags: ignoreversion
 
 [Icons]
 Name: "{autoprograms}\FVLauncher"; Filename: "{app}\main.exe"
