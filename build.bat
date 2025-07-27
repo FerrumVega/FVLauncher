@@ -3,7 +3,13 @@ setlocal enabledelayedexpansion
 
 for /f %%v in ('git describe --tags') do set TAG=%%v
 
-powershell -Command "(Get-Content installer.iss) -replace 'MyAppVersion \"[^\"]+\"', 'MyAppVersion \"%TAG%\"' | Set-Content installer.iss"
+>installer_tmp.iss (
+  for /f "usebackq delims=" %%l in ("installer.iss") do (
+    set "line=%%l"
+    echo !line:MyAppVersion = "1.0.0"=MyAppVersion = "%TAG%"!
+  )
+)
+move /Y installer_tmp.iss installer.iss >nul
 
 python -m nuitka ^
     --onefile ^
