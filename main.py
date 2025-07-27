@@ -187,7 +187,7 @@ def gui(
             version, version_name = returned_versions_data
             if all((mod_loader, nickname, version)):
                 download_info_label.place(relx=0.5, y=430, anchor="center")
-                threading.Thread(
+                minecraft_thread = threading.Thread(
                     target=launch,
                     args=(
                         mod_loader,
@@ -206,7 +206,8 @@ def gui(
                         show_console,
                     ),
                     daemon=True,
-                ).start()
+                )
+                minecraft_thread.start()
             else:
                 null_elements = ", ".join(
                     [
@@ -527,6 +528,7 @@ def prepare_installation_parameters(
 
 @catch_errors
 def download_injector(raw_version, minecraft_directory):
+    indicate_executable_path = None
     authlib_version = None
     with open(
         os.path.join(
@@ -699,6 +701,8 @@ def launch(
         options["jvmArguments"].append(
             f"-javaagent:{os.path.join(minecraft_directory, 'authlib-injector.jar')}=ely.by"
         )
+    else:
+        options.pop("executablePath")
     sodium_path = os.path.join(minecraft_directory, "mods", "sodium.jar")
 
     if not os.path.isdir(os.path.join(minecraft_directory, "mods")):
