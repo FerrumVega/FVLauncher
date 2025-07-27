@@ -19,7 +19,7 @@ rem Обновляем версию в инсталляторе
 move /Y installer_tmp.iss installer.iss >nul
 
 rem Собираем с PyInstaller
-pyinstaller --onefile --windowed --icon=minecraft_title.ico --distpath dist main.py
+pyinstaller --onefile --windowed --icon=assets\minecraft_title.ico --distpath dist main.py
 
 if %ERRORLEVEL% neq 0 exit /b 1
 
