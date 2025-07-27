@@ -1,20 +1,12 @@
-#define UsePreprocessor
-
-#define MyAppName "FVLauncher"
-#define MyAppVersion "1.0.0"
-#define MyAppPublisher "FerrumVega"
-#define MyAppURL "https://www.github.com/FerrumVega/FVLauncher"
-#define MyAppExeName "main.exe"
-
 [Setup]
 AppId={{0E31B735-0AF6-46E0-A33D-701CFD1F9502}}
-AppName={#MyAppName}
-AppVersion={#MyAppVersion}
-AppPublisher={#MyAppPublisher}
-AppPublisherURL={#MyAppURL}
-AppSupportURL={#MyAppURL}
-AppUpdatesURL={#MyAppURL}
-DefaultDirName={autopf}\{#MyAppName}
+AppName=FVLauncher
+AppVersion=1.0.0
+AppPublisher=FerrumVega
+AppPublisherURL=https://www.github.com/FerrumVega/FVLauncher
+AppSupportURL=https://www.github.com/FerrumVega/FVLauncher
+AppUpdatesURL=https://www.github.com/FerrumVega/FVLauncher
+DefaultDirName={autopf}\FVLauncher
 DisableDirPage=yes
 DisableProgramGroupPage=yes
 LicenseFile=LICENSE
@@ -37,8 +29,8 @@ Source: "minecraft_title.ico"; DestDir: "{app}"; Flags: ignoreversion
 Source: "minecraft_title.png"; DestDir: "{app}"; Flags: ignoreversion
 
 [Icons]
-Name: "{autoprograms}\{#MyAppName}"; Filename: "{app}\{#MyAppExeName}"
-Name: "{autodesktop}\{#MyAppName}"; Filename: "{app}\{#MyAppExeName}"; Tasks: desktopicon
+Name: "{autoprograms}\FVLauncher"; Filename: "{app}\main.exe"
+Name: "{autodesktop}\FVLauncher"; Filename: "{app}\main.exe"; Tasks: desktopicon
 
 [Run]
-Filename: "{app}\{#MyAppExeName}"; Description: "{cm:LaunchProgram,{#StringChange(MyAppName, '&', '&&')}}"; Flags: shellexec postinstall skipifsilent
+Filename: "{app}\main.exe"; Description: "{cm:LaunchProgram,FVLauncher}"; Flags: shellexec postinstall skipifsilent

@@ -6,9 +6,9 @@ for /f %%v in ('git describe --tags') do set TAG=%%v
 >installer_tmp.iss (
   for /f "usebackq delims=" %%l in ("installer.iss") do (
     set "line=%%l"
-    echo !line! | findstr /b "#define MyAppVersion" >nul
+    echo !line! | findstr /b "AppVersion=" >nul
     if !errorlevel! == 0 (
-      echo #define MyAppVersion "!TAG!"
+      echo AppVersion=!TAG!
     ) else (
       echo !line!
     )
