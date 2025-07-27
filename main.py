@@ -88,14 +88,7 @@ def load_config(path_to_exe):
         "show_console": "0",
     }
     launcher_is_exe = getattr(sys, "frozen", False)
-    launcher_directory = (
-        os.path.join(
-            path_to_exe,
-            "FVLauncher",
-        )
-        if launcher_is_exe
-        else ""
-    )
+    launcher_directory = os.path.dirname(path_to_exe) if launcher_is_exe else ""
 
     config_path = os.path.join(
         launcher_directory,
