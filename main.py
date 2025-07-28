@@ -228,7 +228,7 @@ def gui(
         settings_window.bg_image = tk.PhotoImage(
             file=os.path.join(
                 "assets",
-                "background.png",
+                "background2.png",
             )
         )
         settings_bg_label = ttk.Label(settings_window, image=settings_window.bg_image)
@@ -322,7 +322,7 @@ def gui(
         account.bg_image = tk.PhotoImage(
             file=os.path.join(
                 "assets",
-                "background.png",
+                "background1.png",
             )
         )
         account_bg_label = ttk.Label(account, image=account.bg_image)
@@ -438,7 +438,7 @@ def gui(
     bg_image = tk.PhotoImage(
         file=os.path.join(
             "assets",
-            "background1.png",
+            "background.png",
         )
     )
     bg_label = ttk.Label(root, image=bg_image)
