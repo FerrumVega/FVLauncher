@@ -1,19 +1,35 @@
 # FVLauncher
 
+## Загрузка лаунчера
+
+1. Кликнтие [сюда](https://github.com/FerrumVega/FVLauncher/releases/latest/download/FVLauncher_Installer.exe) для загрузки инсталлера последней версии лаунчера
+2. Скачайте [java](https://adoptium.net/)
+
+## Частые вопросы и ответы на них
+
+### Проблемы
+
+1. Проблема: Краш игры при запуске на старых версиях
+Решение: Удалить options.txt
+2. Проблема: Игра не запускается
+Решение: Включите "Запуск с консолью" в настройках и откройте issue на github лаунчера с видео запуска
+
+### Вопросы
+
+1. Вопрос: Почему антивирус обнаруживает угрозу в файле?
+Ответ: Это связано с системой упаковки exe-файла. Вы можете удостовериться в этом, собрав exe самостоятельно
+2. Вопрос: Почему я должен скачать именно этот лаунчер?
+Ответ: Мой лаунчер имеет открытый исходный код, весит менее 30 мб и использует официальные версии с сайта разработчиков игры
+
 ## Скриншоты
 
 <img width="302" height="539" alt="Лаунчер" src="https://github.com/user-attachments/assets/f190a6de-5f71-4945-a437-4745f1cc96ac" />
 <img width="302" height="539" alt="Настройки лаунчера" src="https://github.com/user-attachments/assets/54e5405b-8c5b-43c5-a9e8-9c840945ea8b" />
 <img width="302" height="538" alt="Аккаунт для системы скинов" src="https://github.com/user-attachments/assets/679e8eb8-3606-44b7-b73e-64caee6872ad" />
 
-## Загрузка лаунчера
-
-1. Перейдите в раздел [releases](https://github.com/FerrumVega/FVLauncher/releases) и скачайте main.py из последнего релиза
-2. Скачайте [java](https://adoptium.net/)
-
 ## Клонирование репозитория
 
 1. Используйте команду `git clone https://github.com/FerrumVega/FVLauncher` в консоли/терминале
 2. Создайте виртуальное окружение корне проекта (`python -m venv venv`)
 3. Установите зависимости (`pip install -r requirements.txt`)
-4. Для сборки в exe используйте команду из build.bat
+4. Для сборки в exe используйте команду из build.bat, для создания инсталлера используйте installer.iss

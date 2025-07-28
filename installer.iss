@@ -23,10 +23,7 @@ Name: "desktopicon"; Description: "{cm:CreateDesktopIcon}"; GroupDescription: "{
 
 [Files]
 Source: "dist\main\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs createallsubdirs
-Source: "assets\background.png"; DestDir: "{app}\assets"; Flags: ignoreversion
-Source: "assets\background1.png"; DestDir: "{app}\assets"; Flags: ignoreversion
-Source: "assets\minecraft_title.ico"; DestDir: "{app}\assets"; Flags: ignoreversion
-Source: "assets\minecraft_title.png"; DestDir: "{app}\assets"; Flags: ignoreversion
+Source: "assets\*"; DestDir: "{app}\assets"; Flags: ignoreversion recursesubdirs createallsubdirs
 
 [Icons]
 Name: "{autoprograms}\FVLauncher"; Filename: "{app}\main.exe"

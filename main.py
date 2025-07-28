@@ -87,13 +87,8 @@ def load_config(path_to_exe):
         "ely_uuid": "",
         "show_console": "0",
     }
-    launcher_is_exe = getattr(sys, "frozen", False)
-    launcher_directory = os.path.dirname(path_to_exe) if launcher_is_exe else ""
 
-    config_path = os.path.join(
-        launcher_directory,
-        "FVLauncher.ini",
-    )
+    config_path = "FVLauncher.ini"
     parser = configparser.ConfigParser()
 
     if not os.path.isfile(config_path):
@@ -112,10 +107,7 @@ def load_config(path_to_exe):
             with open(config_path, "w", encoding="utf-8") as config_file:
                 parser.write(config_file)
 
-    return (
-        {key: parser["Settings"][key] for key in parser.options("Settings")},
-        launcher_directory,
-    )
+    return {key: parser["Settings"][key] for key in parser.options("Settings")}
 
 
 @catch_errors
@@ -129,7 +121,6 @@ def gui(
     saved_access_token,
     saved_ely_uuid,
     show_console_position,
-    launcher_directory,
 ):
     client_token = str(uuid.uuid5(uuid.NAMESPACE_DNS, str(uuid.getnode())))
     global start_button, progress_var, download_info
@@ -147,10 +138,7 @@ def gui(
             "ely_uuid": ely_uuid,
             "show_console": show_console_var.get(),
         }
-        config_path = os.path.join(
-            launcher_directory,
-            "FVLauncher.ini",
-        )
+        config_path = "FVLauncher.ini"
         parser = configparser.ConfigParser()
 
         parser.add_section("Settings")
@@ -239,7 +227,6 @@ def gui(
 
         settings_window.bg_image = tk.PhotoImage(
             file=os.path.join(
-                launcher_directory,
                 "assets",
                 "background.png",
             )
@@ -334,7 +321,6 @@ def gui(
 
         account.bg_image = tk.PhotoImage(
             file=os.path.join(
-                launcher_directory,
                 "assets",
                 "background.png",
             )
@@ -410,7 +396,6 @@ def gui(
     root.title("FVLauncher")
     icon = tk.PhotoImage(
         file=os.path.join(
-            launcher_directory,
             "assets",
             "minecraft_title.png",
         )
@@ -452,7 +437,6 @@ def gui(
 
     bg_image = tk.PhotoImage(
         file=os.path.join(
-            launcher_directory,
             "assets",
             "background1.png",
         )
@@ -732,14 +716,13 @@ def launch(
 path_to_exe = os.path.abspath(sys.executable)
 config = load_config(path_to_exe)
 gui(
-    config[0]["version"],
-    config[0]["mod_loader"],
-    config[0]["nickname"],
-    config[0]["fix_mode"],
-    config[0]["java_arguments"],
-    config[0]["sodium"],
-    config[0]["access_token"],
-    config[0]["ely_uuid"],
-    config[0]["show_console"],
-    config[1],
+    config["version"],
+    config["mod_loader"],
+    config["nickname"],
+    config["fix_mode"],
+    config["java_arguments"],
+    config["sodium"],
+    config["access_token"],
+    config["ely_uuid"],
+    config["show_console"],
 )
