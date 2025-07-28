@@ -22,7 +22,7 @@ Name: "russian"; MessagesFile: "compiler:Languages\Russian.isl"
 Name: "desktopicon"; Description: "{cm:CreateDesktopIcon}"; GroupDescription: "{cm:AdditionalIcons}"; Flags: unchecked
 
 [Files]
-Source: "dist\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs createallsubdirs
+Source: "dist\main\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs createallsubdirs
 Source: "assets\background.png"; DestDir: "{app}\assets"; Flags: ignoreversion
 Source: "assets\background1.png"; DestDir: "{app}\assets"; Flags: ignoreversion
 Source: "assets\minecraft_title.ico"; DestDir: "{app}\assets"; Flags: ignoreversion
