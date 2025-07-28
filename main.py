@@ -9,10 +9,11 @@ import configparser
 import uuid
 import json
 import sys
+import pypresence
+import time
 import xml.etree.ElementTree as ET
 import tkinter as tk
 from tkinter import ttk, messagebox
-
 
 try:
     ctypes.windll.shcore.SetProcessDpiAwareness(1)
@@ -32,6 +33,9 @@ if java_path is None:
     )
     os._exit(1)
 
+CLIENT_ID = "1399428342117175497"
+start_launcher_time = int(time.time())
+
 
 def catch_errors(func):
     global start_button, progress_var, download_info
@@ -49,6 +53,53 @@ def catch_errors(func):
                 pass
 
     return wrapper
+
+
+def start_rich_presence(
+    CLIENT_ID,
+    start_launcher_time,
+    minecraft_process=None,
+    version=None,
+    mod_loader=None,
+):
+    try:
+        rpc = pypresence.Presence(CLIENT_ID)
+        rpc.connect()
+        if minecraft_process is None:
+            rpc.update(
+                details="В меню",
+                start=start_launcher_time,
+                large_image="minecraft_title",
+                large_text="FVLauncher",
+                buttons=[
+                    {
+                        "label": "Скачать лаунчер",
+                        "url": "https://github.com/FerrumVega/FVLauncher",
+                    }
+                ],
+            )
+        else:
+            rpc.update(
+                pid=minecraft_process.pid,
+                state=f"Играет на версии {version} {mod_loader}",
+                details="В Minecraft",
+                start=start_launcher_time,
+                large_image="minecraft_title",
+                large_text="FVLauncher",
+                small_image="grass_block",
+                small_text="В игре",
+                buttons=[
+                    {
+                        "label": "Скачать лаунчер",
+                        "url": "https://github.com/FerrumVega/FVLauncher",
+                    }
+                ],
+            )
+            minecraft_process.wait()
+            rpc.clear()
+            rpc.close()
+    except Exception:
+        pass
 
 
 @catch_errors
@@ -666,7 +717,7 @@ def launch(
     access_token,
     show_console,
 ):
-    global java_path
+    global java_path, CLIENT_ID, start_launcher_time
 
     install_type, minecraft_directory, options = prepare_installation_parameters(
         mod_loader, nickname, java_arguments, ely_uuid, access_token
@@ -704,15 +755,19 @@ def launch(
 
     start_button["state"] = "normal"
 
-    subprocess.Popen(
+    minecraft_process = subprocess.Popen(
         minecraft_command,
         cwd=minecraft_directory,
         **{"creationflags": subprocess.CREATE_NO_WINDOW} if not show_console else {},
     )
     download_info.set("Игра запущена")
     progress_var.set(100)
+    start_rich_presence(
+        CLIENT_ID, start_launcher_time, minecraft_process, raw_version, mod_loader
+    )
 
 
+start_rich_presence(CLIENT_ID, start_launcher_time)
 path_to_exe = os.path.abspath(sys.executable)
 config = load_config(path_to_exe)
 gui(
