@@ -97,7 +97,6 @@ def start_rich_presence(
             )
             minecraft_process.wait()
             rpc.clear()
-            rpc.close()
     except Exception:
         pass
 
@@ -392,7 +391,7 @@ def gui(
         )
         ely_password_placeholder_label.place(y=100, relx=0.5, anchor="center")
 
-        ely_password = ttk.Entry(account, textvariable=ely_password_var)
+        ely_password = ttk.Entry(account, textvariable=ely_password_var, show="*")
         ely_password.place(y=130, relx=0.5, anchor="center")
 
         login_button = ttk.Button(account, text="Войти в аккаунт", command=login)
