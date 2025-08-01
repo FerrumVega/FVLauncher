@@ -11,6 +11,7 @@ import json
 import sys
 import pypresence
 import time
+import base64
 import xml.etree.ElementTree as ET
 import tkinter as tk
 from tkinter import ttk, messagebox
@@ -20,13 +21,8 @@ try:
 except Exception:
     pass
 
-java_path = None
-for path in os.environ["PATH"].split(";"):
-    speculative_java_path = os.path.join(path.strip('"'), "java.exe")
-    if os.path.isfile(speculative_java_path):
-        java_path = speculative_java_path
-        break
-if java_path is None:
+java_path = minecraft_launcher_lib.utils.get_java_executable()
+if java_path == "java":
     messagebox.showerror(
         "Java не найдена",
         "На вашем компьюетере отсутствует java, загрузите её с github лаунчера.",
@@ -217,11 +213,7 @@ def gui(
         sodium = sodium_var.get()
         show_console = show_console_var.get()
         returned_versions_data = resolve_version_names(raw_version, mod_loader)
-
-        if raw_version not in versions_names_list:
-            messagebox.showerror("Ошибка запуска", "Выберите версию из списка.")
-            start_button["state"] = "normal"
-        elif returned_versions_data:
+        if returned_versions_data:
             version, version_name = returned_versions_data
             if all((mod_loader, nickname, version)):
                 download_info_label.place(relx=0.5, y=430, anchor="center")
@@ -242,6 +234,7 @@ def gui(
                         ely_uuid,
                         access_token,
                         show_console,
+                        minecraft_directory,
                     ),
                     daemon=True,
                 )
@@ -391,7 +384,7 @@ def gui(
         )
         ely_password_placeholder_label.place(y=100, relx=0.5, anchor="center")
 
-        ely_password = ttk.Entry(account, textvariable=ely_password_var, show="*")
+        ely_password = ttk.Entry(account, textvariable=ely_password_var, show="●")
         ely_password.place(y=130, relx=0.5, anchor="center")
 
         login_button = ttk.Button(account, text="Войти в аккаунт", command=login)
@@ -482,6 +475,8 @@ def gui(
 
     ely_password_var = tk.StringVar()
     ely_username_var = tk.StringVar()
+    if not chosen_nickname == "Player":
+        ely_username_var.set(chosen_nickname)
 
     sign_status_var = tk.StringVar()
 
@@ -496,8 +491,10 @@ def gui(
 
     versions_names_list = []
     versions_list = minecraft_launcher_lib.utils.get_version_list()
+    minecraft_directory = minecraft_launcher_lib.utils.get_minecraft_directory()
     for item in versions_list:
         versions_names_list.append(item["id"])
+
     versions_combobox = ttk.Combobox(
         root, values=versions_names_list, textvariable=version_var
     )
@@ -541,9 +538,8 @@ def gui(
 
 @catch_errors
 def prepare_installation_parameters(
-    mod_loader, nickname, java_arguments, ely_uuid, access_token
+    mod_loader, nickname, java_arguments, ely_uuid, access_token, minecraft_directory
 ):
-    minecraft_directory = minecraft_launcher_lib.utils.get_minecraft_directory()
     if mod_loader == "fabric":
         install_type = minecraft_launcher_lib.fabric.install_fabric
     elif mod_loader == "forge":
@@ -561,8 +557,7 @@ def prepare_installation_parameters(
 
 
 @catch_errors
-def download_injector(raw_version, minecraft_directory):
-    indicate_executable_path = None
+def download_injector(raw_version, minecraft_directory, nickname, options):
     authlib_version = None
     with open(
         os.path.join(
@@ -574,56 +569,31 @@ def download_injector(raw_version, minecraft_directory):
                 authlib_version = lib["name"].split(":")[-1]
                 break
     if authlib_version is not None:
-        base_url = "https://maven.ely.by/releases/by/ely/authlib"
-        xml_data = requests.get(f"{base_url}/maven-metadata.xml").content.decode(
-            "utf-8"
+        textures = json.loads(
+            requests.get(f"http://skinsystem.ely.by/profile/{nickname}").content
         )
-        found = False
-        for version in ET.fromstring(xml_data).findall("./versioning/versions/version")[
-            ::-1
-        ]:
-            if authlib_version in version.text:
-                found = True
-                break
-        if found:
-            with open(
-                os.path.join(
-                    minecraft_directory,
-                    "libraries",
-                    "com",
-                    "mojang",
-                    "authlib",
-                    authlib_version,
-                    f"authlib-{authlib_version}.jar",
-                ),
-                "wb",
-            ) as jar:
-                jar.write(
-                    requests.get(
-                        f"{base_url}/{version.text}/authlib-{version.text}.jar"
-                    ).content
-                )
-            java_agent = False
-        else:
-            messagebox.showwarning(
-                "Ошибка скина",
-                "На данной версии нет патченной authlib. Скин будет отображен только в одиночной игре и на серверах с поддержкой ely.by",
+        textures_payload = {
+            "timestamp": int(time.time() * 1000),
+            "profileName": nickname,
+            "textures": textures,
+        }
+        textures_b64 = base64.b64encode(json.dumps(textures_payload).encode()).decode()
+        options["user_properties"] = {"textures": [textures_b64]}
+
+        with open(
+            os.path.join(minecraft_directory, "authlib-injector.jar"), "wb"
+        ) as injector_jar:
+            injector_jar.write(
+                requests.get(
+                    "https://github.com/yushijinhun/authlib-injector/releases/download/v1.2.5/authlib-injector-1.2.5.jar"
+                ).content
             )
-            with open(
-                os.path.join(minecraft_directory, "authlib-injector.jar"), "wb"
-            ) as injector_jar:
-                injector_jar.write(
-                    requests.get(
-                        "https://github.com/yushijinhun/authlib-injector/releases/download/v1.2.5/authlib-injector-1.2.5.jar"
-                    ).content
-                )
-            java_agent = True
+        return True
     else:
         messagebox.showwarning(
             "Ошибка скина", "На данной версии нет authlib, скины не поддерживаются."
         )
-        java_agent = False
-    return java_agent
+        return False
 
 
 @catch_errors
@@ -635,7 +605,6 @@ def install_version(
     minecraft_directory,
     progress_var,
     download_info,
-    raw_version,
 ):
     progress = 0
     max_progress = 100
@@ -657,10 +626,13 @@ def install_version(
             percents = 100.0
         progress_var.set(percents)
 
-    if (
-        not os.path.isdir(os.path.join(minecraft_directory, "versions", version_name))
-        or fix_mode
+    for version_info in minecraft_launcher_lib.utils.get_installed_versions(
+        minecraft_directory
     ):
+        if version_name == version_info["id"] and not fix_mode:
+            download_info.set("Версия уже установлена, запуск...")
+            break
+    else:
         install_type(
             version,
             minecraft_directory,
@@ -670,11 +642,6 @@ def install_version(
                 "setStatus": lambda value: track_progress(value),
             },
         )
-        download_info.set("Загрузка injector...")
-        if download_injector(raw_version, minecraft_directory):
-            return True
-    else:
-        download_info.set("Версия уже установлена, запуск...")
 
 
 @catch_errors
@@ -715,14 +682,20 @@ def launch(
     ely_uuid,
     access_token,
     show_console,
+    minecraft_directory,
 ):
     global java_path, CLIENT_ID, start_launcher_time
 
     install_type, minecraft_directory, options = prepare_installation_parameters(
-        mod_loader, nickname, java_arguments, ely_uuid, access_token
+        mod_loader,
+        nickname,
+        java_arguments,
+        ely_uuid,
+        access_token,
+        minecraft_directory,
     )
 
-    if install_version(
+    install_version(
         version,
         version_name,
         install_type,
@@ -730,8 +703,9 @@ def launch(
         minecraft_directory,
         progress_var,
         download_info,
-        raw_version,
-    ):
+    )
+    download_info.set("Загрузка injector...")
+    if download_injector(raw_version, minecraft_directory, nickname, options):
         options["jvmArguments"].append(
             f"-javaagent:{os.path.join(minecraft_directory, 'authlib-injector.jar')}=ely.by"
         )
