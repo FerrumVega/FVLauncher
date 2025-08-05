@@ -1,5 +1,9 @@
 # FVLauncher
 
+## Telegram
+
+Официальный Telegram-канал лаунчера: <https://t.me/FVLauncher>
+
 ## Загрузка лаунчера
 
 1. Кликнтие [сюда](https://github.com/FerrumVega/FVLauncher/releases/latest/download/FVLauncher_Installer.exe) для загрузки инсталлера последней версии лаунчера
