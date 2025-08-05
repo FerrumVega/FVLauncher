@@ -1,4 +1,5 @@
 import minecraft_launcher_lib
+import mod_loaders_installer
 import subprocess
 import os
 import requests
@@ -12,7 +13,7 @@ import sys
 import pypresence
 import time
 import base64
-import xml.etree.ElementTree as ET
+import datetime
 import tkinter as tk
 from tkinter import ttk, messagebox
 
@@ -22,7 +23,7 @@ except Exception:
     pass
 
 java_path = minecraft_launcher_lib.utils.get_java_executable()
-if java_path == "java":
+if java_path == "java" or java_path == "javaw":
     messagebox.showerror(
         "Java не найдена",
         "На вашем компьюетере отсутствует java, загрузите её с github лаунчера.",
@@ -98,40 +99,63 @@ def start_rich_presence(
 
 
 @catch_errors
-def resolve_version_names(raw_version, mod_loader):
-    name_of_version_to_install = raw_version
-    name_of_version_folder = raw_version
-    if mod_loader == "forge":
-        if minecraft_launcher_lib.forge.find_forge_version(raw_version):
-            name_of_version_to_install = (
-                minecraft_launcher_lib.forge.find_forge_version(raw_version)
+def v1_8_or_higher(raw_version):
+    for version in minecraft_launcher_lib.utils.get_version_list():
+        if raw_version == version["id"]:
+            return version["releaseTime"] >= datetime.datetime(
+                2014, 9, 2, 8, 24, 35, tzinfo=datetime.timezone.utc
             )
-            name_of_version_folder = f"{name_of_version_to_install.split('-')[0]}-forge-{name_of_version_to_install.split('-')[1]}"
-            return (name_of_version_to_install, name_of_version_folder)
-        else:
-            return None
-    elif mod_loader == "fabric":
-        if minecraft_launcher_lib.fabric.is_minecraft_version_supported(raw_version):
-            name_of_version_folder = f"fabric-loader-{minecraft_launcher_lib.fabric.get_latest_loader_version()}-{name_of_version_to_install}"
-            return (name_of_version_to_install, name_of_version_folder)
-        else:
-            return None
-
-    return (name_of_version_to_install, name_of_version_folder)
 
 
 @catch_errors
-def load_config(path_to_exe):
+def resolve_version_names(raw_version, mod_loader):
+    try:
+        name_of_version_to_install = raw_version
+        if mod_loader == "forge":
+            name_of_version_to_install = (
+                minecraft_launcher_lib.forge.find_forge_version(raw_version)
+            )
+            if (
+                name_of_version_to_install is not None
+                and (
+                    requests.get(
+                        f"https://maven.minecraftforge.net/net/minecraftforge/forge/{name_of_version_to_install}/forge-{name_of_version_to_install}-installer.jar"
+                    ).status_code
+                    == 200
+                )
+                and v1_8_or_higher(raw_version)
+            ):
+                return name_of_version_to_install
+            else:
+                return
+        elif mod_loader == "fabric":
+            if minecraft_launcher_lib.fabric.is_minecraft_version_supported(
+                raw_version
+            ):
+                return name_of_version_to_install
+            else:
+                return
+
+        return name_of_version_to_install
+    except requests.exceptions.ConnectionError:
+        return "InstalledVersionsOnly"
+
+
+@catch_errors
+def load_config():
     default_config = {
         "version": "1.16.5",
         "mod_loader": "fabric",
         "nickname": "Player",
-        "fix_mode": "0",
         "java_arguments": "",
-        "sodium": "1",
+        "sodium": "True",
         "access_token": "",
         "ely_uuid": "",
-        "show_console": "0",
+        "show_console": "False",
+        "show_old_alphas": "False",
+        "show_old_betas": "False",
+        "show_snapshots": "False",
+        "show_releases": "True",
     }
 
     config_path = "FVLauncher.ini"
@@ -161,28 +185,61 @@ def gui(
     chosen_version,
     chosen_mod_loader,
     chosen_nickname,
-    fix_mode_position,
     chosen_java_arguments,
     sodium_position,
     saved_access_token,
     saved_ely_uuid,
     show_console_position,
+    show_old_alphas_postion,
+    show_old_betas_postion,
+    show_snapshots_postion,
+    show_releases_postion,
 ):
     client_token = str(uuid.uuid5(uuid.NAMESPACE_DNS, str(uuid.getnode())))
     global start_button, progress_var, download_info
 
     @catch_errors
-    def safe_config():
+    def showversions(show_old_aplhas, show_old_betas, show_snapshots, show_releases):
+        versions_names_list = []
+        try:
+            for version in minecraft_launcher_lib.utils.get_version_list():
+                if version["type"] == "old_alpha" and show_old_aplhas:
+                    versions_names_list.append(version["id"])
+                elif version["type"] == "old_beta" and show_old_betas:
+                    versions_names_list.append(version["id"])
+                elif version["type"] == "snapshot" and show_snapshots:
+                    versions_names_list.append(version["id"])
+                elif version["type"] == "release" and show_releases:
+                    versions_names_list.append(version["id"])
+            for item in minecraft_launcher_lib.utils.get_installed_versions(
+                minecraft_directory
+            ):
+                if (
+                    not "fabric-loader-" in item["id"].lower()
+                    and not "forge" in item["id"].lower()
+                    and not minecraft_launcher_lib.utils.is_vanilla_version(item["id"])
+                ):
+                    versions_names_list.append(item["id"])
+            versions_combobox["values"] = versions_names_list
+        except requests.exceptions.ConnectionError:
+            versions_combobox["state"] = "normal"
+            pass
+
+    @catch_errors
+    def save_config():
         settings = {
             "version": version_var.get(),
             "mod_loader": mod_loader_var.get(),
             "nickname": nickname_var.get(),
-            "fix_mode": str(fix_mode_var.get()),
             "java_arguments": java_arguments_var.get(),
             "sodium": str(sodium_var.get()),
             "access_token": access_token,
             "ely_uuid": ely_uuid,
             "show_console": show_console_var.get(),
+            "show_old_alphas": show_old_alphas_var.get(),
+            "show_old_betas": show_old_betas_var.get(),
+            "show_snapshots": show_snapshots_var.get(),
+            "show_releases": show_releases_var.get(),
         }
         config_path = "FVLauncher.ini"
         parser = configparser.ConfigParser()
@@ -208,13 +265,12 @@ def gui(
         mod_loader = mod_loader_var.get()
         raw_version = version_var.get()
         nickname = nickname_var.get()
-        fix_mode = fix_mode_var.get()
         java_arguments = java_arguments_var.get().split()
         sodium = sodium_var.get()
         show_console = show_console_var.get()
         returned_versions_data = resolve_version_names(raw_version, mod_loader)
         if returned_versions_data:
-            version, version_name = returned_versions_data
+            version = returned_versions_data
             if all((mod_loader, nickname, version)):
                 download_info_label.place(relx=0.5, y=430, anchor="center")
                 minecraft_thread = threading.Thread(
@@ -223,8 +279,6 @@ def gui(
                         mod_loader,
                         nickname,
                         version,
-                        version_name,
-                        fix_mode,
                         java_arguments,
                         start_button,
                         progress_var,
@@ -278,22 +332,72 @@ def gui(
         settings_bg_label.place(relwidth=1, relheight=1)
 
         java_arguments_label = ttk.Label(settings_window, text="java-аргументы")
-        java_arguments_label.place(relx=0.5, y=30, anchor="center")
+        java_arguments_label.place(relx=0.5, y=25, anchor="center")
 
         java_arguments_entry = ttk.Entry(
             settings_window, textvariable=java_arguments_var
         )
         java_arguments_entry.place(relx=0.5, y=60, anchor="center")
 
-        fix_mode_checkbox = ttk.Checkbutton(
-            settings_window, text="fix-mode", variable=fix_mode_var
-        )
-        fix_mode_checkbox.place(relx=0.5, y=110, relwidth=0.6, anchor="center")
-
         show_console_checkbox = ttk.Checkbutton(
             settings_window, text="Запуск с консолью", variable=show_console_var
         )
-        show_console_checkbox.place(relx=0.5, y=145, relwidth=0.6, anchor="center")
+        show_console_checkbox.place(relx=0.5, y=95, relwidth=0.6, anchor="center")
+
+        versions_filter_label = ttk.Label(settings_window, text="Фильтр версий")
+        versions_filter_label.place(relx=0.5, y=165, anchor="center")
+
+        old_alphas_checkbox = ttk.Checkbutton(
+            settings_window,
+            text="Старые альфы",
+            variable=show_old_alphas_var,
+            command=lambda: showversions(
+                show_old_alphas_var.get(),
+                show_old_betas_var.get(),
+                show_snapshots_var.get(),
+                show_releases_var.get(),
+            ),
+        )
+        old_alphas_checkbox.place(relx=0.5, y=200, relwidth=0.6, anchor="center")
+
+        old_betas_checkbox = ttk.Checkbutton(
+            settings_window,
+            text="Старые беты",
+            variable=show_old_betas_var,
+            command=lambda: showversions(
+                show_old_alphas_var.get(),
+                show_old_betas_var.get(),
+                show_snapshots_var.get(),
+                show_releases_var.get(),
+            ),
+        )
+        old_betas_checkbox.place(relx=0.5, y=235, relwidth=0.6, anchor="center")
+
+        snaphots_checkbox = ttk.Checkbutton(
+            settings_window,
+            text="Снапшоты",
+            variable=show_snapshots_var,
+            command=lambda: showversions(
+                show_old_alphas_var.get(),
+                show_old_betas_var.get(),
+                show_snapshots_var.get(),
+                show_releases_var.get(),
+            ),
+        )
+        snaphots_checkbox.place(relx=0.5, y=270, relwidth=0.6, anchor="center")
+
+        releases_checkbox = ttk.Checkbutton(
+            settings_window,
+            text="Релизы",
+            variable=show_releases_var,
+            command=lambda: showversions(
+                show_old_alphas_var.get(),
+                show_old_betas_var.get(),
+                show_snapshots_var.get(),
+                show_releases_var.get(),
+            ),
+        )
+        releases_checkbox.place(relx=0.5, y=305, relwidth=0.6, anchor="center")
 
     @catch_errors
     def skins_system():
@@ -398,40 +502,44 @@ def gui(
 
     @catch_errors
     def auto_login():
-        if saved_ely_uuid and saved_access_token:
-            valid_token_info = requests.post(
-                "https://authserver.ely.by/auth/validate",
-                json={"accessToken": saved_access_token},
-            )
-            if valid_token_info.status_code != 200:
-                refreshed_token_info = requests.post(
-                    "https://authserver.ely.by/auth/refresh",
-                    json={
-                        "accessToken": saved_access_token,
-                        "clientToken": client_token,
-                        "requestUser": True,
-                    },
+        try:
+            if saved_ely_uuid and saved_access_token:
+                valid_token_info = requests.post(
+                    "https://authserver.ely.by/auth/validate",
+                    json={"accessToken": saved_access_token},
                 )
-                if refreshed_token_info.status_code != 200:
-                    access_token = ""
-                    ely_uuid = ""
-                    sign_status_var.set("Статус: вы не вошли в аккаунт")
-                    return access_token, ely_uuid
+                if valid_token_info.status_code != 200:
+                    refreshed_token_info = requests.post(
+                        "https://authserver.ely.by/auth/refresh",
+                        json={
+                            "accessToken": saved_access_token,
+                            "clientToken": client_token,
+                            "requestUser": True,
+                        },
+                    )
+                    if refreshed_token_info.status_code != 200:
+                        access_token = ""
+                        ely_uuid = ""
+                        sign_status_var.set("Статус: вы не вошли в аккаунт")
+                        return access_token, ely_uuid
+                    else:
+                        access_token = refreshed_token_info.json()["accessToken"]
+                        ely_uuid = refreshed_token_info.json()["user"]["id"]
+                        username = refreshed_token_info.json()["user"]["username"]
+                        nickname_var.set(username)
+                        nickname_entry["state"] = "disabled"
+                        sign_status_var.set("Статус: вы вошли в аккаунт")
+                        return access_token, ely_uuid
                 else:
-                    access_token = refreshed_token_info.json()["accessToken"]
-                    ely_uuid = refreshed_token_info.json()["user"]["id"]
-                    username = refreshed_token_info.json()["user"]["username"]
+                    username = chosen_nickname
                     nickname_var.set(username)
                     nickname_entry["state"] = "disabled"
                     sign_status_var.set("Статус: вы вошли в аккаунт")
-                    return access_token, ely_uuid
+                    return saved_access_token, saved_ely_uuid
             else:
-                username = chosen_nickname
-                nickname_var.set(username)
-                nickname_entry["state"] = "disabled"
-                sign_status_var.set("Статус: вы вошли в аккаунт")
+                sign_status_var.set("Статус: вы не вошли в аккаунт")
                 return saved_access_token, saved_ely_uuid
-        else:
+        except requests.exceptions.ConnectionError:
             sign_status_var.set("Статус: вы не вошли в аккаунт")
             return saved_access_token, saved_ely_uuid
 
@@ -456,7 +564,7 @@ def gui(
     nickname_var = tk.StringVar()
     nickname_var.set(chosen_nickname)
 
-    sodium_var = tk.IntVar()
+    sodium_var = tk.BooleanVar()
     sodium_var.set(sodium_position)
 
     progress_var = tk.DoubleVar()
@@ -467,11 +575,8 @@ def gui(
     java_arguments_var = tk.StringVar()
     java_arguments_var.set(chosen_java_arguments)
 
-    fix_mode_var = tk.IntVar()
-    fix_mode_var.set(int(fix_mode_position))
-
-    show_console_var = tk.IntVar()
-    show_console_var.set(int(show_console_position))
+    show_console_var = tk.BooleanVar()
+    show_console_var.set(bool(show_console_position))
 
     ely_password_var = tk.StringVar()
     ely_username_var = tk.StringVar()
@@ -479,6 +584,15 @@ def gui(
         ely_username_var.set(chosen_nickname)
 
     sign_status_var = tk.StringVar()
+
+    show_old_alphas_var = tk.BooleanVar()
+    show_old_alphas_var.set(show_old_alphas_postion)
+    show_old_betas_var = tk.BooleanVar()
+    show_old_betas_var.set(show_old_betas_postion)
+    show_snapshots_var = tk.BooleanVar()
+    show_snapshots_var.set(show_snapshots_postion)
+    show_releases_var = tk.BooleanVar()
+    show_releases_var.set(show_releases_postion)
 
     bg_image = tk.PhotoImage(
         file=os.path.join(
@@ -490,21 +604,26 @@ def gui(
     bg_label.place(relwidth=1, relheight=1)
 
     versions_names_list = []
-    versions_list = minecraft_launcher_lib.utils.get_version_list()
     minecraft_directory = minecraft_launcher_lib.utils.get_minecraft_directory()
-    for item in versions_list:
-        versions_names_list.append(item["id"])
 
     versions_combobox = ttk.Combobox(
         root, values=versions_names_list, textvariable=version_var
     )
     versions_combobox.place(x=80, y=30, anchor="center", relwidth=0.43)
+    versions_combobox["state"] = "readonly"
+    showversions(
+        show_old_alphas_var.get(),
+        show_old_betas_var.get(),
+        show_snapshots_var.get(),
+        show_releases_var.get(),
+    )
 
     mod_loaders = ["fabric", "forge", "vanilla"]
     loaders_combobox = ttk.Combobox(
         root, values=mod_loaders, textvariable=mod_loader_var
     )
     loaders_combobox.place(x=220, y=30, anchor="center", relwidth=0.43)
+    loaders_combobox["state"] = "readonly"
 
     nickname_entry = ttk.Entry(root, textvariable=nickname_var)
     nickname_entry.place(relx=0.5, y=70, anchor="center", relwidth=0.9)
@@ -520,7 +639,9 @@ def gui(
     progressbar = ttk.Progressbar(root, variable=progress_var, length=295)
     progressbar.place(relx=0.5, y=400, anchor="center")
 
-    download_info_label = ttk.Label(textvariable=download_info, font=("", 8))
+    download_info_label = ttk.Label(
+        textvariable=download_info, font=("", 8), wraplength=290, justify="center"
+    )
 
     settings_button = ttk.Button(root, text="⚙️", command=open_settings)
     settings_button.place(x=270, y=480, anchor="center", relwidth=0.15)
@@ -529,7 +650,7 @@ def gui(
     account_button.place(x=40, y=480, anchor="center")
 
     sv_ttk.set_theme("dark")
-    root.protocol("WM_DELETE_WINDOW", safe_config)
+    root.protocol("WM_DELETE_WINDOW", save_config)
 
     access_token, ely_uuid = auto_login()
 
@@ -541,9 +662,9 @@ def prepare_installation_parameters(
     mod_loader, nickname, java_arguments, ely_uuid, access_token, minecraft_directory
 ):
     if mod_loader == "fabric":
-        install_type = minecraft_launcher_lib.fabric.install_fabric
+        install_type = mod_loaders_installer.fabric.install_fabric
     elif mod_loader == "forge":
-        install_type = minecraft_launcher_lib.forge.install_forge_version
+        install_type = mod_loaders_installer.forge.install_forge_version
     else:
         install_type = minecraft_launcher_lib.install.install_minecraft_version
     options = {
@@ -557,90 +678,135 @@ def prepare_installation_parameters(
 
 
 @catch_errors
-def download_injector(raw_version, minecraft_directory, nickname, options):
-    authlib_version = None
-    with open(
-        os.path.join(
+def download_injector(raw_version, minecraft_directory, nickname, options, version):
+    if version != "InstalledVersionsOnly":
+        json_path = os.path.join(
             minecraft_directory, "versions", raw_version, f"{raw_version}.json"
         )
-    ) as file_with_downloads:
-        for lib in json.load(file_with_downloads)["libraries"]:
-            if lib["name"].startswith("com.mojang:authlib:"):
-                authlib_version = lib["name"].split(":")[-1]
-                break
-    if authlib_version is not None:
-        textures = json.loads(
-            requests.get(f"http://skinsystem.ely.by/profile/{nickname}").content
+        if not minecraft_launcher_lib.utils.is_vanilla_version(raw_version):
+            with open(json_path) as file_with_downloads:
+                raw_version = json.load(file_with_downloads)["inheritsFrom"]
+        json_path = os.path.join(
+            minecraft_directory, "versions", raw_version, f"{raw_version}.json"
         )
-        textures_payload = {
-            "timestamp": int(time.time() * 1000),
-            "profileName": nickname,
-            "textures": textures,
-        }
-        textures_b64 = base64.b64encode(json.dumps(textures_payload).encode()).decode()
-        options["user_properties"] = {"textures": [textures_b64]}
-
-        with open(
-            os.path.join(minecraft_directory, "authlib-injector.jar"), "wb"
-        ) as injector_jar:
-            injector_jar.write(
-                requests.get(
-                    "https://github.com/yushijinhun/authlib-injector/releases/download/v1.2.5/authlib-injector-1.2.5.jar"
-                ).content
+        authlib_version = None
+        with open(json_path) as file_with_downloads:
+            for lib in json.load(file_with_downloads)["libraries"]:
+                if lib["name"].startswith("com.mojang:authlib:"):
+                    authlib_version = lib["name"].split(":")[-1]
+                    break
+        if authlib_version is not None:
+            textures = json.loads(
+                requests.get(f"http://skinsystem.ely.by/profile/{nickname}").content
             )
-        return True
+            textures_payload = {
+                "timestamp": int(time.time() * 1000),
+                "profileName": nickname,
+                "textures": textures,
+            }
+            textures_b64 = base64.b64encode(
+                json.dumps(textures_payload).encode()
+            ).decode()
+            options["user_properties"] = {"textures": [textures_b64]}
+
+            with open(
+                os.path.join(minecraft_directory, "authlib-injector.jar"), "wb"
+            ) as injector_jar:
+                injector_jar.write(
+                    requests.get(
+                        "https://github.com/yushijinhun/authlib-injector/releases/download/v1.2.5/authlib-injector-1.2.5.jar"
+                    ).content
+                )
+            return True
+        else:
+            messagebox.showwarning(
+                "Ошибка скина", "На данной версии нет authlib, скины не поддерживаются."
+            )
+            return False
     else:
-        messagebox.showwarning(
-            "Ошибка скина", "На данной версии нет authlib, скины не поддерживаются."
-        )
+        messagebox.showwarning("Ошибка скина", "Отсутсвует подключение к интернету.")
         return False
 
 
 @catch_errors
 def install_version(
     version,
-    version_name,
     install_type,
-    fix_mode,
     minecraft_directory,
     progress_var,
     download_info,
+    mod_loader,
+    raw_version,
 ):
     progress = 0
     max_progress = 100
+    percents = 0
+    last_track_progress_call_time = time.time()
+    last_progress_info = ""
 
     @catch_errors
-    def track_progress(value, type=None):
-        nonlocal progress, max_progress
-        if type == "progress":
-            progress = value
-        elif type == "max":
-            max_progress = value
-        else:
-            download_info.set(value)
-        try:
-            percents = progress / max_progress * 100
-        except ZeroDivisionError:
-            percents = 0
-        if percents > 100.0:
-            percents = 100.0
-        progress_var.set(percents)
+    def track_progress(value, type):
+        nonlocal progress, max_progress, last_track_progress_call_time, last_progress_info, percents
+        if time.time() - last_track_progress_call_time > 1 or (
+            type == "progress_info" and value != last_progress_info
+        ):
+            if type != "progress_info":
+                if type == "progress":
+                    progress = value
+                elif type == "max":
+                    max_progress = value
+                try:
+                    percents = progress / max_progress * 100
+                except ZeroDivisionError:
+                    percents = 0
+                if percents > 100.0:
+                    percents = 100.0
+                progress_var.set(percents)
+                last_track_progress_call_time = time.time()
+            else:
+                last_progress_info = value
+                download_info.set(value)
 
-    for version_info in minecraft_launcher_lib.utils.get_installed_versions(
-        minecraft_directory
+    installed_versions_path = os.path.join(
+        minecraft_directory, "installed_versions.json"
+    )
+    if not os.path.isfile(installed_versions_path):
+        with open(
+            installed_versions_path, "w", encoding="utf-8"
+        ) as installed_versions_file:
+            json.dump({"installed_versions": []}, installed_versions_file)
+
+    with open(installed_versions_path, encoding="utf-8") as installed_versions_file:
+        installed_versions = json.load(installed_versions_file)
+    if (
+        f"{mod_loader}{raw_version}" not in installed_versions["installed_versions"]
+        and version != "InstalledVersionsOnly"
     ):
-        if version_name == version_info["id"] and not fix_mode:
-            download_info.set("Версия уже установлена, запуск...")
-            break
-    else:
         install_type(
             version,
             minecraft_directory,
+            **{"raw_version": raw_version} if mod_loader == "forge" else {},
             callback={
                 "setProgress": lambda value: track_progress(value, "progress"),
                 "setMax": lambda value: track_progress(value, "max"),
-                "setStatus": lambda value: track_progress(value),
+                "setStatus": lambda value: track_progress(value, "progress_info"),
             },
+        )
+        with open(
+            installed_versions_path, "w", encoding="utf-8"
+        ) as installed_versions_file:
+            json.dump(
+                {
+                    "installed_versions": installed_versions["installed_versions"]
+                    + [f"{mod_loader}{raw_version}"]
+                },
+                installed_versions_file,
+            )
+
+    elif version == "InstalledVersionsOnly":
+        messagebox.showerror(
+            "Ошибка подключения",
+            "Вы в оффлайн-режиме.\nВерсия отсутсвует на вашем компьютере, загрузка невозможна.\nПопробуйте перезапустить лаунчер.",
         )
 
 
@@ -671,8 +837,6 @@ def launch(
     mod_loader,
     nickname,
     version,
-    version_name,
-    fix_mode,
     java_arguments,
     start_button,
     progress_var,
@@ -697,15 +861,22 @@ def launch(
 
     install_version(
         version,
-        version_name,
         install_type,
-        fix_mode,
         minecraft_directory,
         progress_var,
         download_info,
+        mod_loader,
+        raw_version,
     )
+    if mod_loader == "forge":
+        version_name = f"Forge {raw_version}"
+    elif mod_loader == "fabric":
+        version_name = f"Fabric {raw_version}"
+    else:
+        version_name = raw_version
     download_info.set("Загрузка injector...")
-    if download_injector(raw_version, minecraft_directory, nickname, options):
+    progress_var.set(100)
+    if download_injector(raw_version, minecraft_directory, nickname, options, version):
         options["jvmArguments"].append(
             f"-javaagent:{os.path.join(minecraft_directory, 'authlib-injector.jar')}=ely.by"
         )
@@ -734,23 +905,25 @@ def launch(
         **{"creationflags": subprocess.CREATE_NO_WINDOW} if not show_console else {},
     )
     download_info.set("Игра запущена")
-    progress_var.set(100)
     start_rich_presence(
         CLIENT_ID, start_launcher_time, minecraft_process, raw_version, mod_loader
     )
 
 
-start_rich_presence(CLIENT_ID, start_launcher_time)
-path_to_exe = os.path.abspath(sys.executable)
-config = load_config(path_to_exe)
-gui(
-    config["version"],
-    config["mod_loader"],
-    config["nickname"],
-    config["fix_mode"],
-    config["java_arguments"],
-    config["sodium"],
-    config["access_token"],
-    config["ely_uuid"],
-    config["show_console"],
-)
+if __name__ == "__main__":
+    start_rich_presence(CLIENT_ID, start_launcher_time)
+    config = load_config()
+    gui(
+        config["version"],
+        config["mod_loader"],
+        config["nickname"],
+        config["java_arguments"],
+        config["sodium"],
+        config["access_token"],
+        config["ely_uuid"],
+        config["show_console"],
+        config["show_old_alphas"],
+        config["show_old_betas"],
+        config["show_snapshots"],
+        config["show_releases"],
+    )
