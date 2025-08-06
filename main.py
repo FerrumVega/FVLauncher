@@ -1,5 +1,4 @@
 import minecraft_launcher_lib
-import mod_loaders_installer
 import subprocess
 import os
 import requests
@@ -9,7 +8,6 @@ import sv_ttk
 import configparser
 import uuid
 import json
-import sys
 import pypresence
 import time
 import base64
@@ -99,44 +97,28 @@ def start_rich_presence(
 
 
 @catch_errors
-def v1_8_or_higher(raw_version):
+def v1_6_or_higher(raw_version):
     for version in minecraft_launcher_lib.utils.get_version_list():
         if raw_version == version["id"]:
             return version["releaseTime"] >= datetime.datetime(
-                2014, 9, 2, 8, 24, 35, tzinfo=datetime.timezone.utc
+                2013, 6, 25, 13, 8, 56, tzinfo=datetime.timezone.utc
             )
 
 
 @catch_errors
-def resolve_version_names(raw_version, mod_loader):
+def mod_loader_is_supported(raw_version, mod_loader):
     try:
-        name_of_version_to_install = raw_version
-        if mod_loader == "forge":
-            name_of_version_to_install = (
-                minecraft_launcher_lib.forge.find_forge_version(raw_version)
-            )
-            if (
-                name_of_version_to_install is not None
-                and (
-                    requests.get(
-                        f"https://maven.minecraftforge.net/net/minecraftforge/forge/{name_of_version_to_install}/forge-{name_of_version_to_install}-installer.jar"
-                    ).status_code
-                    == 200
-                )
-                and v1_8_or_higher(raw_version)
-            ):
-                return name_of_version_to_install
-            else:
-                return
-        elif mod_loader == "fabric":
-            if minecraft_launcher_lib.fabric.is_minecraft_version_supported(
+        if mod_loader != "vanilla":
+            if minecraft_launcher_lib.mod_loader.get_mod_loader(
+                mod_loader
+            ).is_minecraft_version_supported(raw_version) and v1_6_or_higher(
                 raw_version
             ):
-                return name_of_version_to_install
+                return True
             else:
-                return
-
-        return name_of_version_to_install
+                return False
+        else:
+            return True
     except requests.exceptions.ConnectionError:
         return "InstalledVersionsOnly"
 
@@ -268,22 +250,19 @@ def gui(
         java_arguments = java_arguments_var.get().split()
         sodium = sodium_var.get()
         show_console = show_console_var.get()
-        returned_versions_data = resolve_version_names(raw_version, mod_loader)
-        if returned_versions_data:
-            version = returned_versions_data
-            if all((mod_loader, nickname, version)):
+        if mod_loader_is_supported(raw_version, mod_loader):
+            if all((mod_loader, nickname, raw_version)):
                 download_info_label.place(relx=0.5, y=430, anchor="center")
                 minecraft_thread = threading.Thread(
                     target=launch,
                     args=(
                         mod_loader,
                         nickname,
-                        version,
+                        raw_version,
                         java_arguments,
                         start_button,
                         progress_var,
                         download_info,
-                        raw_version,
                         sodium,
                         ely_uuid,
                         access_token,
@@ -298,7 +277,7 @@ def gui(
                     [
                         name
                         for element, name in zip(
-                            (mod_loader, nickname, version),
+                            (mod_loader, nickname, raw_version),
                             ("загрузчик модов", "никнейм", "версия"),
                         )
                         if not element
@@ -661,10 +640,10 @@ def gui(
 def prepare_installation_parameters(
     mod_loader, nickname, java_arguments, ely_uuid, access_token, minecraft_directory
 ):
-    if mod_loader == "fabric":
-        install_type = mod_loaders_installer.fabric.install_fabric
-    elif mod_loader == "forge":
-        install_type = mod_loaders_installer.forge.install_forge_version
+    if mod_loader != "vanilla":
+        install_type = minecraft_launcher_lib.mod_loader.get_mod_loader(
+            mod_loader
+        ).install
     else:
         install_type = minecraft_launcher_lib.install.install_minecraft_version
     options = {
@@ -737,12 +716,14 @@ def install_version(
     download_info,
     mod_loader,
     raw_version,
+    options,
 ):
     progress = 0
     max_progress = 100
     percents = 0
     last_track_progress_call_time = time.time()
     last_progress_info = ""
+    mod_loader = "" if mod_loader == "vanilla" else mod_loader
 
     @catch_errors
     def track_progress(value, type):
@@ -767,47 +748,30 @@ def install_version(
                 last_progress_info = value
                 download_info.set(value)
 
-    installed_versions_path = os.path.join(
-        minecraft_directory, "installed_versions.json"
-    )
-    if not os.path.isfile(installed_versions_path):
-        with open(
-            installed_versions_path, "w", encoding="utf-8"
-        ) as installed_versions_file:
-            json.dump({"installed_versions": []}, installed_versions_file)
-
-    with open(installed_versions_path, encoding="utf-8") as installed_versions_file:
-        installed_versions = json.load(installed_versions_file)
-    if (
-        f"{mod_loader}{raw_version}" not in installed_versions["installed_versions"]
-        and version != "InstalledVersionsOnly"
-    ):
-        install_type(
-            version,
-            minecraft_directory,
-            **{"raw_version": raw_version} if mod_loader == "forge" else {},
-            callback={
-                "setProgress": lambda value: track_progress(value, "progress"),
-                "setMax": lambda value: track_progress(value, "max"),
-                "setStatus": lambda value: track_progress(value, "progress_info"),
-            },
-        )
-        with open(
-            installed_versions_path, "w", encoding="utf-8"
-        ) as installed_versions_file:
-            json.dump(
-                {
-                    "installed_versions": installed_versions["installed_versions"]
-                    + [f"{mod_loader}{raw_version}"]
+    for v in minecraft_launcher_lib.utils.get_installed_versions(minecraft_directory):
+        if mod_loader in v["id"] and raw_version in v["id"]:
+            return v["id"], minecraft_directory, options
+    else:
+        if version != "InstalledVersionsOnly":
+            install_type(
+                version,
+                minecraft_directory,
+                callback={
+                    "setProgress": lambda value: track_progress(value, "progress"),
+                    "setMax": lambda value: track_progress(value, "max"),
+                    "setStatus": lambda value: track_progress(value, "progress_info"),
                 },
-                installed_versions_file,
             )
-
-    elif version == "InstalledVersionsOnly":
-        messagebox.showerror(
-            "Ошибка подключения",
-            "Вы в оффлайн-режиме.\nВерсия отсутсвует на вашем компьютере, загрузка невозможна.\nПопробуйте перезапустить лаунчер.",
-        )
+            for v in minecraft_launcher_lib.utils.get_installed_versions(
+                minecraft_directory
+            ):
+                if mod_loader in v["id"] and raw_version in v["id"]:
+                    return v["id"], minecraft_directory, options
+        else:
+            messagebox.showerror(
+                "Ошибка подключения",
+                "Вы в оффлайн-режиме.\nВерсия отсутсвует на вашем компьютере, загрузка невозможна.\nПопробуйте перезапустить лаунчер.",
+            )
 
 
 @catch_errors
@@ -836,12 +800,11 @@ def download_sodium(sodium_path, raw_version, download_info):
 def launch(
     mod_loader,
     nickname,
-    version,
+    raw_version,
     java_arguments,
     start_button,
     progress_var,
     download_info,
-    raw_version,
     sodium,
     ely_uuid,
     access_token,
@@ -859,24 +822,21 @@ def launch(
         minecraft_directory,
     )
 
-    install_version(
-        version,
+    version, minecraft_directory, options = install_version(
+        raw_version,
         install_type,
         minecraft_directory,
         progress_var,
         download_info,
         mod_loader,
         raw_version,
+        options,
     )
-    if mod_loader == "forge":
-        version_name = f"Forge {raw_version}"
-    elif mod_loader == "fabric":
-        version_name = f"Fabric {raw_version}"
-    else:
-        version_name = raw_version
     download_info.set("Загрузка injector...")
     progress_var.set(100)
-    if download_injector(raw_version, minecraft_directory, nickname, options, version):
+    if download_injector(
+        raw_version, minecraft_directory, nickname, options, raw_version
+    ):
         options["jvmArguments"].append(
             f"-javaagent:{os.path.join(minecraft_directory, 'authlib-injector.jar')}=ely.by"
         )
@@ -893,14 +853,12 @@ def launch(
 
     download_info.set("Версия установлена, запуск...")
 
-    minecraft_command = minecraft_launcher_lib.command.get_minecraft_command(
-        version_name, minecraft_directory, options
-    )
-
     start_button["state"] = "normal"
 
     minecraft_process = subprocess.Popen(
-        minecraft_command,
+        minecraft_launcher_lib.command.get_minecraft_command(
+            version, minecraft_directory, options
+        ),
         cwd=minecraft_directory,
         **{"creationflags": subprocess.CREATE_NO_WINDOW} if not show_console else {},
     )
