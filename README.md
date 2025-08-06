@@ -29,7 +29,8 @@
 
 <img width="302" height="539" alt="Главное меню лаунчера" src="https://github.com/user-attachments/assets/08882b95-0036-4b79-9267-43ef273eb62d" />
 <img width="302" height="539" alt="Настройки лаунчера" src="https://github.com/user-attachments/assets/ebfe3246-1a94-4a8a-bf6b-85c605ab63c1" />
-<img width="302" height="539" alt="Аккаунт системы скинов" src="https://github.com/user-attachments/assets/8e3e4f2b-a343-4b43-8b8a-880e95e5787a" />
+<img width="302" height="539" alt="Аккаунт системы скинов" src="https://github.com/user-attachments/assets/3398de0c-a800-43b4-bc35-1898d6c5c088" />
+
 
 ## Клонирование репозитория
 
