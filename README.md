@@ -31,7 +31,6 @@
 <img width="302" height="539" alt="Настройки лаунчера" src="https://github.com/user-attachments/assets/ebfe3246-1a94-4a8a-bf6b-85c605ab63c1" />
 <img width="302" height="539" alt="Аккаунт системы скинов" src="https://github.com/user-attachments/assets/3398de0c-a800-43b4-bc35-1898d6c5c088" />
 
-
 ## Клонирование репозитория
 
 1. Используйте команду `git clone https://github.com/FerrumVega/FVLauncher` в консоли/терминале
