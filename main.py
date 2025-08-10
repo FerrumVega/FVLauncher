@@ -1,10 +1,11 @@
 import minecraft_launcher_lib
+from PySide6 import QtWidgets, QtGui
+from PySide6.QtCore import Qt, QObject, Signal
 import subprocess
 import os
+import sys
 import requests
-import ctypes
 import threading
-import sv_ttk
 import configparser
 import uuid
 import json
@@ -12,17 +13,27 @@ import pypresence
 import time
 import base64
 import datetime
-import tkinter as tk
-from tkinter import ttk, messagebox
 
-try:
-    ctypes.windll.shcore.SetProcessDpiAwareness(1)
-except Exception:
-    pass
+
+class GuiMessenger(QObject):
+    warning = Signal(str, str)
+    critical = Signal(str, str)
+    info = Signal(str, str)
+
+    def __init__(self):
+        super().__init__()
+        self.warning.connect(lambda t, m: QtWidgets.QMessageBox.warning(None, t, m))
+        self.critical.connect(lambda t, m: QtWidgets.QMessageBox.critical(None, t, m))
+        self.info.connect(lambda t, m: QtWidgets.QMessageBox.information(None, t, m))
+
+
+app = QtWidgets.QApplication(sys.argv)
+app.setStyle(QtWidgets.QStyleFactory.create("windows11"))
+gui_messenger = GuiMessenger()
 
 java_path = minecraft_launcher_lib.utils.get_java_executable()
 if java_path == "java" or java_path == "javaw":
-    messagebox.showerror(
+    gui_messenger.critical.emit(
         "Java не найдена",
         "На вашем компьюетере отсутствует java, загрузите её с github лаунчера.",
     )
@@ -33,19 +44,13 @@ start_launcher_time = int(time.time())
 
 
 def catch_errors(func):
-    global start_button, progress_var, download_info
-
     def wrapper(*args, **kwargs):
         try:
             return func(*args, **kwargs)
         except Exception as e:
-            messagebox.showerror("Ошибка", f"Произошла ошибка в {func.__name__}:\n{e}")
-            try:
-                start_button["state"] = "normal"
-                progress_var.set(0)
-                download_info.set("Во время загрузки произошла ошибка.")
-            except Exception:
-                pass
+            gui_messenger.critical.emit(
+                "Ошибка", f"Произошла ошибка в {func.__name__}:\n{e}"
+            )
 
     return wrapper
 
@@ -96,48 +101,53 @@ def start_rich_presence(
         pass
 
 
-@catch_errors
-def v1_6_or_higher(raw_version):
-    for version in minecraft_launcher_lib.utils.get_version_list():
-        if raw_version == version["id"]:
-            return version["releaseTime"] >= datetime.datetime(
-                2013, 6, 25, 13, 8, 56, tzinfo=datetime.timezone.utc
-            )
-
-
-@catch_errors
-def mod_loader_is_supported(raw_version, mod_loader):
+def showversions(self, show_old_alphas, show_old_betas, show_snapshots, show_releases):
+    self.show_old_alphas = show_old_alphas
+    self.show_old_betas = show_old_betas
+    self.show_snapshots = show_snapshots
+    self.show_releases = show_releases
+    versions_names_list = []
     try:
-        if mod_loader != "vanilla":
-            if minecraft_launcher_lib.mod_loader.get_mod_loader(
-                mod_loader
-            ).is_minecraft_version_supported(raw_version) and v1_6_or_higher(
-                raw_version
+        for version in minecraft_launcher_lib.utils.get_version_list():
+            if version["type"] == "old_alpha" and show_old_alphas:
+                versions_names_list.append(version["id"])
+            elif version["type"] == "old_beta" and show_old_betas:
+                versions_names_list.append(version["id"])
+            elif version["type"] == "snapshot" and show_snapshots:
+                versions_names_list.append(version["id"])
+            elif version["type"] == "release" and show_releases:
+                versions_names_list.append(version["id"])
+        for item in minecraft_launcher_lib.utils.get_installed_versions(
+            self.minecraft_directory
+        ):
+            if (
+                not "fabric" in item["id"].lower()
+                and not "forge" in item["id"].lower()
+                and not "quilt" in item["id"].lower()
+                and not "neoforge" in item["id"].lower()
+                and not minecraft_launcher_lib.utils.is_vanilla_version(item["id"])
             ):
-                return True
-            else:
-                return False
-        else:
-            return True
+                versions_names_list.append(item["id"])
+        self.versions_combobox.clear()
+        self.versions_combobox.addItems(versions_names_list)
     except requests.exceptions.ConnectionError:
-        return "InstalledVersionsOnly"
+        pass
 
 
-@catch_errors
 def load_config():
     default_config = {
         "version": "1.16.5",
         "mod_loader": "fabric",
-        "nickname": "Player",
+        "nickname": "",
         "java_arguments": "",
-        "sodium": "True",
+        "sodium": "0",
         "access_token": "",
         "ely_uuid": "",
-        "show_console": "False",
-        "show_old_alphas": "False",
-        "show_old_betas": "False",
-        "show_snapshots": "False",
-        "show_releases": "True",
+        "show_console": "0",
+        "show_old_alphas": "0",
+        "show_old_betas": "0",
+        "show_snapshots": "0",
+        "show_releases": "1",
     }
 
     config_path = "FVLauncher.ini"
@@ -162,68 +172,331 @@ def load_config():
     return {key: parser["Settings"][key] for key in parser.options("Settings")}
 
 
-@catch_errors
-def gui(
-    chosen_version,
-    chosen_mod_loader,
-    chosen_nickname,
-    chosen_java_arguments,
-    sodium_position,
-    saved_access_token,
-    saved_ely_uuid,
-    show_console_position,
-    show_old_alphas_postion,
-    show_old_betas_postion,
-    show_snapshots_postion,
-    show_releases_postion,
-):
-    client_token = str(uuid.uuid5(uuid.NAMESPACE_DNS, str(uuid.getnode())))
-    global start_button, progress_var, download_info
+class SettingsWindow(QtWidgets.QMainWindow):
+    def __init__(
+        self,
+        window,
+        java_arguments,
+        show_console,
+        show_old_alphas,
+        show_old_betas,
+        show_snapshots,
+        show_releases,
+    ):
+        super().__init__()
+        self.window = window
+        self.window.java_arguments = java_arguments
+        self.window.show_console = show_console
+        self.window.show_old_alphas = show_old_alphas
+        self.window.show_old_betas = show_old_betas
+        self.window.show_snapshots = show_snapshots
+        self.window.show_releases = show_releases
+        self.minecraft_directory = (
+            minecraft_launcher_lib.utils.get_minecraft_directory()
+        )
+        self._make_ui()
 
-    @catch_errors
-    def showversions(show_old_aplhas, show_old_betas, show_snapshots, show_releases):
-        versions_names_list = []
+    def set_var(self, pos, var):
+        print(pos, var)
+        if var == "java_arguments":
+            self.window.java_arguments = pos
+        elif var == "show_console":
+            self.window.show_console = pos
+        elif var == "alphas":
+            self.window.show_old_alphas = pos
+        elif var == "betas":
+            self.window.show_old_betas = pos
+        elif var == "snapshots":
+            self.window.show_snapshots = pos
+        elif var == "releases":
+            self.window.show_releases = pos
+
+    def _make_ui(self):
+        self.settings_window = QtWidgets.QDialog()
+        self.settings_window.setWindowTitle("Настройки")
+        self.settings_window.setFixedSize(300, 500)
+
+        self.java_arguments_label = QtWidgets.QLabel(
+            self.settings_window, text="java-аргументы"
+        )
+        self.java_arguments_label.move(25, 25)
+        self.java_arguments_label.setFixedWidth(250)
+        self.java_arguments_label.setAlignment(Qt.AlignCenter)
+
+        self.java_arguments_entry = QtWidgets.QLineEdit(self.settings_window)
+        self.java_arguments_entry.setText(self.window.java_arguments)
+        self.java_arguments_entry.textChanged.connect(
+            lambda pos: self.set_var(pos, "java_arguments")
+        )
+        self.java_arguments_entry.move(25, 45)
+        self.java_arguments_entry.setFixedWidth(250)
+
+        self.show_console_checkbox = QtWidgets.QCheckBox(self.settings_window)
+        self.show_console_checkbox.setChecked(self.window.show_console)
+        self.show_console_checkbox.stateChanged.connect(
+            lambda pos: self.set_var(pos, "show_console")
+        )
+        self.show_console_checkbox.setText("Запуск с консолью")
+        checkbox_width = self.show_console_checkbox.sizeHint().width()
+        self.window_width = self.settings_window.width()
+        self.show_console_checkbox.move((self.window_width - checkbox_width) // 2, 85)
+
+        self.versions_filter_label = QtWidgets.QLabel(
+            self.settings_window, text="Фильтр версий"
+        )
+        self.versions_filter_label.move(25, 125)
+        self.versions_filter_label.setFixedWidth(250)
+        self.versions_filter_label.setAlignment(Qt.AlignCenter)
+
+        self.old_alphas_checkbox = QtWidgets.QCheckBox(self.settings_window)
+        self.old_alphas_checkbox.setChecked(self.window.show_old_alphas)
+        self.old_alphas_checkbox.stateChanged.connect(
+            lambda pos: self.set_var(pos, "alphas")
+        )
+        self.old_alphas_checkbox.setText("Старые альфы")
+        self.old_alphas_checkbox.stateChanged.connect(
+            lambda: showversions(
+                self.window,
+                self.old_alphas_checkbox.isChecked(),
+                self.old_betas_checkbox.isChecked(),
+                self.snapshots_checkbox.isChecked(),
+                self.releases_checkbox.isChecked(),
+            )
+        )
+        self.checkbox_width = self.old_alphas_checkbox.sizeHint().width()
+        self.old_alphas_checkbox.move(
+            (self.window_width - self.checkbox_width) // 2, 145
+        )
+
+        self.old_betas_checkbox = QtWidgets.QCheckBox(self.settings_window)
+        self.old_betas_checkbox.setChecked(self.window.show_old_betas)
+        self.old_betas_checkbox.stateChanged.connect(
+            lambda pos: self.set_var(pos, "betas")
+        )
+        self.old_betas_checkbox.setText("Старые беты")
+        self.old_betas_checkbox.stateChanged.connect(
+            lambda: showversions(
+                self.window,
+                self.old_alphas_checkbox.isChecked(),
+                self.old_betas_checkbox.isChecked(),
+                self.snapshots_checkbox.isChecked(),
+                self.releases_checkbox.isChecked(),
+            )
+        )
+        self.checkbox_width = self.old_betas_checkbox.sizeHint().width()
+        self.old_betas_checkbox.move(
+            (self.window_width - self.checkbox_width) // 2, 165
+        )
+
+        self.snapshots_checkbox = QtWidgets.QCheckBox(self.settings_window)
+        self.snapshots_checkbox.setChecked(self.window.show_snapshots)
+        self.snapshots_checkbox.stateChanged.connect(
+            lambda pos: self.set_var(pos, "snapshots")
+        )
+        self.snapshots_checkbox.setText("Снапшоты")
+        self.snapshots_checkbox.stateChanged.connect(
+            lambda: showversions(
+                self.window,
+                self.old_alphas_checkbox.isChecked(),
+                self.old_betas_checkbox.isChecked(),
+                self.snapshots_checkbox.isChecked(),
+                self.releases_checkbox.isChecked(),
+            )
+        )
+        self.checkbox_width = self.snapshots_checkbox.sizeHint().width()
+        self.snapshots_checkbox.move(
+            (self.window_width - self.checkbox_width) // 2, 185
+        )
+
+        self.releases_checkbox = QtWidgets.QCheckBox(self.settings_window)
+        self.releases_checkbox.setChecked(self.window.show_releases)
+        self.releases_checkbox.stateChanged.connect(
+            lambda pos: self.set_var(pos, "releases")
+        )
+        self.releases_checkbox.setText("Релизы")
+        self.releases_checkbox.stateChanged.connect(
+            lambda: showversions(
+                self.window,
+                self.old_alphas_checkbox.isChecked(),
+                self.old_betas_checkbox.isChecked(),
+                self.snapshots_checkbox.isChecked(),
+                self.releases_checkbox.isChecked(),
+            )
+        )
+        self.checkbox_width = self.releases_checkbox.sizeHint().width()
+        self.releases_checkbox.move((self.window_width - self.checkbox_width) // 2, 205)
+
+        self.settings_window.show()
+
+
+class AccountWindow(QtWidgets.QMainWindow):
+    def __init__(self, window):
+        super().__init__()
+        self.window = window
+        self._make_ui()
+
+    def _make_ui(self):
+
+        def login():
+            self.data = requests.post(
+                "https://authserver.ely.by/auth/authenticate",
+                json={
+                    "username": self.ely_username.text(),
+                    "password": self.ely_password.text(),
+                    "clientToken": self.window.client_token,
+                    "requestUser": True,
+                },
+            )
+            if self.sign_status_label.text() == "Статус: вы вошли в аккаунт":
+                gui_messenger.critical.emit(
+                    "Ошибка входа",
+                    "Сначала выйдите из аккаунта",
+                )
+            elif self.data.status_code == 200:
+                self.window.access_token = self.data.json()["accessToken"]
+                self.window.ely_uuid = self.data.json()["user"]["id"]
+                gui_messenger.info.emit(
+                    "Поздравляем!", "Теперь вы будете видеть свой скин в игре."
+                )
+                self.sign_status_label.setText("Статус: вы вошли в аккаунт")
+                self.window.nickname_entry.setText(self.data.json()["user"]["username"])
+                self.window.nickname_entry.setReadOnly(True)
+            else:
+                gui_messenger.critical.emit(
+                    "Ошибка входа",
+                    f"Текст ошибки: {self.data.json()['errorMessage']}",
+                )
+
+        def signout():
+            self.data = requests.post(
+                "https://authserver.ely.by/auth/invalidate",
+                json={
+                    "accessToken": self.window.access_token,
+                    "clientToken": self.window.client_token,
+                },
+            )
+            self.window.access_token = ""
+            self.window.ely_uuid = ""
+            if self.data.status_code == 200:
+                gui_messenger.info.emit(
+                    "Выход из аккаунта",
+                    "Вы вышли из аккаунта",
+                )
+                self.window.nickname_entry.setReadOnly(False)
+                self.sign_status_label.setText("Статус: вы вышли из аккаунта")
+            else:
+                gui_messenger.critical.emit(
+                    "Ошибка выхода",
+                    self.data.json()["errorMessage"],
+                )
+
+        self.account_window = QtWidgets.QDialog()
+        self.account_window.setWindowTitle("Настройки")
+        self.account_window.setFixedSize(300, 500)
+
+        self.ely_username = QtWidgets.QLineEdit(self.account_window)
+        self.ely_username.setPlaceholderText("Никнейм аккаунта ely.by")
+        self.window_width = self.account_window.width()
+        self.entry_width = self.ely_username.sizeHint().width()
+        self.ely_username.move((self.window_width - self.entry_width) // 2, 40)
+
+        self.ely_password = QtWidgets.QLineEdit(self.account_window)
+        self.ely_password.setPlaceholderText("Пароль аккаунта ely.by")
+        self.ely_password.setEchoMode(QtWidgets.QLineEdit.EchoMode.Password)
+        self.entry_width = self.ely_password.sizeHint().width()
+        self.ely_password.move((self.window_width - self.entry_width) // 2, 70)
+
+        self.login_button = QtWidgets.QPushButton(self.account_window)
+        self.login_button.setText("Войти в аккаунт")
+        self.login_button.clicked.connect(login)
+        self.button_width = self.login_button.sizeHint().width()
+        self.login_button.move((self.window_width - self.button_width) // 2, 120)
+
+        self.signout_button = QtWidgets.QPushButton(self.account_window)
+        self.signout_button.setText("Выйти из аккаунта")
+        self.signout_button.clicked.connect(signout)
+        self.button_width = self.signout_button.sizeHint().width()
+        self.signout_button.move((self.window_width - self.button_width) // 2, 150)
+
+        self.sign_status_label = QtWidgets.QLabel(
+            self.account_window, text=self.window.sign_status
+        )
+        self.label_width = self.sign_status_label.sizeHint().width()
+        self.sign_status_label.move((self.window_width - self.label_width) // 2, 180)
+
+        self.account_window.show()
+
+
+class MainWindow(QtWidgets.QMainWindow):
+    def __init__(
+        self,
+        chosen_version,
+        chosen_mod_loader,
+        chosen_nickname,
+        chosen_java_arguments,
+        sodium_position,
+        saved_access_token,
+        saved_ely_uuid,
+        show_console_position,
+        show_old_alphas_position,
+        show_old_betas_position,
+        show_snapshots_position,
+        show_releases_position,
+    ):
+        self.chosen_version = chosen_version
+        self.chosen_mod_loader = chosen_mod_loader
+        self.chosen_nickname = chosen_nickname
+        self.chosen_java_arguments = chosen_java_arguments
+        self.sodium_position = sodium_position
+        self.saved_access_token = saved_access_token
+        self.saved_ely_uuid = saved_ely_uuid
+        self.show_console_position = show_console_position
+        self.show_old_alphas_position = show_old_alphas_position
+        self.show_old_betas_position = show_old_betas_position
+        self.show_snapshots_position = show_snapshots_position
+        self.show_releases_position = show_releases_position
+        super().__init__()
+        self.client_token = str(uuid.uuid5(uuid.NAMESPACE_DNS, str(uuid.getnode())))
+        self._make_ui()
+
+    def v1_6_or_higher(self, raw_version):
+        for version in minecraft_launcher_lib.utils.get_version_list():
+            if raw_version == version["id"]:
+                return version["releaseTime"] >= datetime.datetime(
+                    2013, 6, 25, 13, 8, 56, tzinfo=datetime.timezone.utc
+                )
+
+    def mod_loader_is_supported(self, raw_version, mod_loader):
         try:
-            for version in minecraft_launcher_lib.utils.get_version_list():
-                if version["type"] == "old_alpha" and show_old_aplhas:
-                    versions_names_list.append(version["id"])
-                elif version["type"] == "old_beta" and show_old_betas:
-                    versions_names_list.append(version["id"])
-                elif version["type"] == "snapshot" and show_snapshots:
-                    versions_names_list.append(version["id"])
-                elif version["type"] == "release" and show_releases:
-                    versions_names_list.append(version["id"])
-            for item in minecraft_launcher_lib.utils.get_installed_versions(
-                minecraft_directory
-            ):
-                if (
-                    not "fabric" in item["id"].lower()
-                    and not "forge" in item["id"].lower()
-                    and not "quilt" in item["id"].lower()
-                    and not "neoforge" in item["id"].lower()
-                    and not minecraft_launcher_lib.utils.is_vanilla_version(item["id"])
+            if mod_loader != "vanilla":
+                minecraft_launcher_lib.mod_loader
+                if minecraft_launcher_lib.mod_loader.get_mod_loader(
+                    mod_loader
+                ).is_minecraft_version_supported(raw_version) and self.v1_6_or_higher(
+                    raw_version
                 ):
-                    versions_names_list.append(item["id"])
-            versions_combobox["values"] = versions_names_list
+                    return True
+                else:
+                    return False
+            else:
+                return True
         except requests.exceptions.ConnectionError:
-            versions_combobox["state"] = "normal"
-            pass
+            return "InstalledVersionsOnly"
 
-    @catch_errors
-    def save_config():
+    def save_config(self):
         settings = {
-            "version": version_var.get(),
-            "mod_loader": mod_loader_var.get(),
-            "nickname": nickname_var.get(),
-            "java_arguments": java_arguments_var.get(),
-            "sodium": str(sodium_var.get()),
-            "access_token": access_token,
-            "ely_uuid": ely_uuid,
-            "show_console": show_console_var.get(),
-            "show_old_alphas": show_old_alphas_var.get(),
-            "show_old_betas": show_old_betas_var.get(),
-            "show_snapshots": show_snapshots_var.get(),
-            "show_releases": show_releases_var.get(),
+            "version": self.raw_version,
+            "mod_loader": self.mod_loader,
+            "nickname": self.nickname,
+            "java_arguments": self.java_arguments,
+            "sodium": self.sodium,
+            "access_token": self.access_token,
+            "ely_uuid": self.ely_uuid,
+            "show_console": self.show_console,
+            "show_old_alphas": self.show_old_alphas,
+            "show_old_betas": self.show_old_betas,
+            "show_snapshots": self.show_snapshots,
+            "show_releases": self.show_releases,
         }
         config_path = "FVLauncher.ini"
         parser = configparser.ConfigParser()
@@ -233,412 +506,223 @@ def gui(
 
         with open(config_path, "w", encoding="utf-8") as config_file:
             parser.write(config_file)
-        root.quit()
-        root.destroy()
-        os._exit(0)
 
-    @catch_errors
-    def block_sodium_checkbox(*args):
-        sodium_checkbox["state"] = (
-            "normal" if mod_loader_var.get() == "fabric" else "disabled"
-        )
-
-    @catch_errors
-    def on_start_button():
-        start_button["state"] = "disabled"
-        mod_loader = mod_loader_var.get()
-        raw_version = version_var.get()
-        nickname = nickname_var.get()
-        java_arguments = java_arguments_var.get().split()
-        sodium = sodium_var.get()
-        show_console = show_console_var.get()
-        if mod_loader_is_supported(raw_version, mod_loader):
-            if all((mod_loader, nickname, raw_version)):
-                download_info_label.place(relx=0.5, y=430, anchor="center")
-                minecraft_thread = threading.Thread(
-                    target=launch,
-                    args=(
-                        mod_loader,
-                        nickname,
-                        raw_version,
-                        java_arguments,
-                        start_button,
-                        progress_var,
-                        download_info,
-                        sodium,
-                        ely_uuid,
-                        access_token,
-                        show_console,
-                        minecraft_directory,
-                    ),
-                    daemon=True,
-                )
-                minecraft_thread.start()
-            else:
-                null_elements = ", ".join(
-                    [
-                        name
-                        for element, name in zip(
-                            (mod_loader, nickname, raw_version),
-                            ("загрузчик модов", "никнейм", "версия"),
-                        )
-                        if not element
-                    ]
-                ).capitalize()
-                messagebox.showerror(
-                    "Ошибка запуска",
-                    f"Следующие поля не заполнены:\n{null_elements}.",
-                )
-                start_button["state"] = "normal"
+    def block_sodium_checkbox(self, *args):
+        if self.loaders_combobox.currentText() == "fabric":
+            self.sodium_checkbox.setDisabled(False)
         else:
-            messagebox.showerror(
-                "Ошибка", "Для данной версии нет выбранного вами загрузчика модов."
+            self.sodium_checkbox.setDisabled(True)
+
+    def on_start_button(self):
+        if self.mod_loader_is_supported(self.raw_version, self.mod_loader):
+            self.download_info_label.move(50, 450)
+            self.download_info_label.setAlignment(Qt.AlignCenter)
+            minecraft_thread = threading.Thread(
+                target=launch,
+                args=(
+                    self.mod_loader,
+                    self.nickname,
+                    self.raw_version,
+                    self.java_arguments,
+                    self.start_button,
+                    self.progressbar,
+                    self.download_info_label,
+                    self.sodium,
+                    self.ely_uuid,
+                    self.access_token,
+                    self.show_console,
+                    self.minecraft_directory,
+                ),
+                daemon=True,
             )
-            start_button["state"] = "normal"
-
-    @catch_errors
-    def open_settings():
-        settings_window = tk.Toplevel()
-        settings_window.title("Настройки")
-        settings_window.geometry(root.geometry())
-        settings_window.resizable(width=False, height=False)
-
-        settings_window.bg_image = tk.PhotoImage(
-            file=os.path.join(
-                "assets",
-                "background2.png",
+            minecraft_thread.start()
+        else:
+            gui_messenger.critical.emit(
+                "Ошибка",
+                "Для данной версии нет выбранного вами загрузчика модов.",
             )
-        )
-        settings_bg_label = ttk.Label(settings_window, image=settings_window.bg_image)
-        settings_bg_label.place(relwidth=1, relheight=1)
 
-        java_arguments_label = ttk.Label(settings_window, text="java-аргументы")
-        java_arguments_label.place(relx=0.5, y=25, anchor="center")
+    def set_var(self, pos, var):
+        print(pos, var)
+        if var == "sodium":
+            self.sodium = pos
+        elif var == "mod_loader":
+            self.mod_loader = pos
+        elif var == "version":
+            self.raw_version = pos
+        elif var == "nickname":
+            self.nickname = pos
 
-        java_arguments_entry = ttk.Entry(
-            settings_window, textvariable=java_arguments_var
-        )
-        java_arguments_entry.place(relx=0.5, y=60, anchor="center")
-
-        show_console_checkbox = ttk.Checkbutton(
-            settings_window, text="Запуск с консолью", variable=show_console_var
-        )
-        show_console_checkbox.place(relx=0.5, y=95, relwidth=0.6, anchor="center")
-
-        versions_filter_label = ttk.Label(settings_window, text="Фильтр версий")
-        versions_filter_label.place(relx=0.5, y=165, anchor="center")
-
-        old_alphas_checkbox = ttk.Checkbutton(
-            settings_window,
-            text="Старые альфы",
-            variable=show_old_alphas_var,
-            command=lambda: showversions(
-                show_old_alphas_var.get(),
-                show_old_betas_var.get(),
-                show_snapshots_var.get(),
-                show_releases_var.get(),
-            ),
-        )
-        old_alphas_checkbox.place(relx=0.5, y=200, relwidth=0.6, anchor="center")
-
-        old_betas_checkbox = ttk.Checkbutton(
-            settings_window,
-            text="Старые беты",
-            variable=show_old_betas_var,
-            command=lambda: showversions(
-                show_old_alphas_var.get(),
-                show_old_betas_var.get(),
-                show_snapshots_var.get(),
-                show_releases_var.get(),
-            ),
-        )
-        old_betas_checkbox.place(relx=0.5, y=235, relwidth=0.6, anchor="center")
-
-        snaphots_checkbox = ttk.Checkbutton(
-            settings_window,
-            text="Снапшоты",
-            variable=show_snapshots_var,
-            command=lambda: showversions(
-                show_old_alphas_var.get(),
-                show_old_betas_var.get(),
-                show_snapshots_var.get(),
-                show_releases_var.get(),
-            ),
-        )
-        snaphots_checkbox.place(relx=0.5, y=270, relwidth=0.6, anchor="center")
-
-        releases_checkbox = ttk.Checkbutton(
-            settings_window,
-            text="Релизы",
-            variable=show_releases_var,
-            command=lambda: showversions(
-                show_old_alphas_var.get(),
-                show_old_betas_var.get(),
-                show_snapshots_var.get(),
-                show_releases_var.get(),
-            ),
-        )
-        releases_checkbox.place(relx=0.5, y=305, relwidth=0.6, anchor="center")
-
-    @catch_errors
-    def skins_system():
-
-        @catch_errors
-        def login():
-            nonlocal access_token, ely_uuid
-            data = requests.post(
-                "https://authserver.ely.by/auth/authenticate",
-                json={
-                    "username": ely_username_var.get(),
-                    "password": ely_password_var.get(),
-                    "clientToken": client_token,
-                    "requestUser": True,
-                },
-            )
-            if sign_status_var.get() == "Статус: вы вошли в аккаунт":
-                messagebox.showerror(
-                    "Ошибка входа", "Сначала выйдите из аккаунта", parent=account
-                )
-            elif data.status_code == 200:
-                access_token = data.json()["accessToken"]
-                ely_uuid = data.json()["user"]["id"]
-                nickname_var.set(data.json()["user"]["username"])
-                nickname_entry["state"] = "disabled"
-                messagebox.showinfo(
-                    "Поздравляем!",
-                    "Теперь вы будете видеть свой скин в игре.",
-                    parent=account,
-                )
-                sign_status_var.set("Статус: вы вошли в аккаунт")
-            else:
-                messagebox.showerror(
-                    "Ошибка входа",
-                    f"Текст ошибки: {data.json()['errorMessage']}",
-                    parent=account,
-                )
-
-        @catch_errors
-        def signout():
-            nonlocal access_token, ely_uuid
-            data = requests.post(
-                "https://authserver.ely.by/auth/invalidate",
-                json={
-                    "accessToken": access_token,
-                    "clientToken": client_token,
-                },
-            )
-            access_token = ""
-            ely_uuid = ""
-            nickname_entry["state"] = "normal"
-            if data.status_code == 200:
-                messagebox.showinfo(
-                    "Выход из аккаунта", "Вы вышли из аккаунта", parent=account
-                )
-                sign_status_var.set("Статус: вы вышли из аккаунта")
-            else:
-                messagebox.showerror(
-                    "Ошибка выхода",
-                    data.json()["errorMessage"],
-                    parent=account,
-                )
-
-        account = tk.Toplevel()
-        account.title("Аккаунт")
-        account.geometry(root.geometry())
-        account.resizable(width=False, height=False)
-
-        account.bg_image = tk.PhotoImage(
-            file=os.path.join(
-                "assets",
-                "background1.png",
-            )
-        )
-        account_bg_label = ttk.Label(account, image=account.bg_image)
-        account_bg_label.place(relwidth=1, relheight=1)
-
-        ely_username_placeholder_label = ttk.Label(
-            account, text="Никнейм аккаунта ely.by"
-        )
-        ely_username_placeholder_label.place(y=40, relx=0.5, anchor="center")
-
-        ely_username = ttk.Entry(account, textvariable=ely_username_var)
-        ely_username.place(y=70, relx=0.5, anchor="center")
-
-        ely_password_placeholder_label = ttk.Label(
-            account, text="Пароль аккаунта ely.by"
-        )
-        ely_password_placeholder_label.place(y=100, relx=0.5, anchor="center")
-
-        ely_password = ttk.Entry(account, textvariable=ely_password_var, show="●")
-        ely_password.place(y=130, relx=0.5, anchor="center")
-
-        login_button = ttk.Button(account, text="Войти в аккаунт", command=login)
-        login_button.place(y=190, relx=0.5, anchor="center")
-
-        signout_button = ttk.Button(account, text="Выйти из аккаунта", command=signout)
-        signout_button.place(y=225, relx=0.5, anchor="center")
-
-        sign_status_label = ttk.Label(account, textvariable=sign_status_var)
-        sign_status_label.place(y=480, relx=0.5, anchor="center")
-
-    @catch_errors
-    def auto_login():
+    def auto_login(self):
         try:
-            if saved_ely_uuid and saved_access_token:
+            if self.saved_ely_uuid and self.saved_access_token:
                 valid_token_info = requests.post(
                     "https://authserver.ely.by/auth/validate",
-                    json={"accessToken": saved_access_token},
+                    json={"accessToken": self.saved_access_token},
                 )
                 if valid_token_info.status_code != 200:
                     refreshed_token_info = requests.post(
                         "https://authserver.ely.by/auth/refresh",
                         json={
-                            "accessToken": saved_access_token,
-                            "clientToken": client_token,
+                            "accessToken": self.saved_access_token,
+                            "clientToken": self.client_token,
                             "requestUser": True,
                         },
                     )
                     if refreshed_token_info.status_code != 200:
                         access_token = ""
                         ely_uuid = ""
-                        sign_status_var.set("Статус: вы не вошли в аккаунт")
+                        self.sign_status = "Статус: вы не вошли в аккаунт"
                         return access_token, ely_uuid
                     else:
                         access_token = refreshed_token_info.json()["accessToken"]
                         ely_uuid = refreshed_token_info.json()["user"]["id"]
                         username = refreshed_token_info.json()["user"]["username"]
-                        nickname_var.set(username)
-                        nickname_entry["state"] = "disabled"
-                        sign_status_var.set("Статус: вы вошли в аккаунт")
+                        self.nickname_entry.setText(username)
+                        self.nickname_entry.setReadOnly(True)
+                        self.sign_status = "Статус: вы вошли в аккаунт"
                         return access_token, ely_uuid
                 else:
-                    username = chosen_nickname
-                    nickname_var.set(username)
-                    nickname_entry["state"] = "disabled"
-                    sign_status_var.set("Статус: вы вошли в аккаунт")
-                    return saved_access_token, saved_ely_uuid
+                    username = self.chosen_nickname
+                    self.nickname_entry.setText(username)
+                    self.nickname_entry.setReadOnly(True)
+                    self.sign_status = "Статус: вы вошли в аккаунт"
+                    return self.saved_access_token, self.saved_ely_uuid
             else:
-                sign_status_var.set("Статус: вы не вошли в аккаунт")
-                return saved_access_token, saved_ely_uuid
+                self.sign_status = "Статус: вы не вошли в аккаунт"
+                return self.saved_access_token, self.saved_ely_uuid
         except requests.exceptions.ConnectionError:
-            sign_status_var.set("Статус: вы не вошли в аккаунт")
-            return saved_access_token, saved_ely_uuid
+            self.sign_status = "Статус: вы не вошли в аккаунт"
+            return self.saved_access_token, self.saved_ely_uuid
 
-    root = tk.Tk()
-    root.title("FVLauncher")
-    icon = tk.PhotoImage(
-        file=os.path.join(
-            "assets",
-            "minecraft_title.png",
+    def _make_ui(self):
+        # self.setStyleSheet(
+        #     f"""
+        #     QMainWindow {{
+        #         background-image: url("assets/background.png");
+        #         background-repeat: no-repeat;
+        #         background-position: center;
+        #         background-attachment: fixed;
+        #     }}
+        # """
+        # )
+        self.setWindowTitle("FVLauncher")
+        self.sign_status = ""
+        self.setWindowIcon(
+            QtGui.QIcon(
+                (
+                    os.path.join(
+                        "assets",
+                        "minecraft_title.png",
+                    )
+                )
+            )
         )
-    )
-    root.iconphoto(True, icon)
-    root.geometry("300x500")
-    root.resizable(width=False, height=False)
 
-    version_var = tk.StringVar()
-    version_var.set(chosen_version)
-
-    mod_loader_var = tk.StringVar()
-    mod_loader_var.set(chosen_mod_loader)
-
-    nickname_var = tk.StringVar()
-    nickname_var.set(chosen_nickname)
-
-    sodium_var = tk.BooleanVar()
-    sodium_var.set(sodium_position)
-
-    progress_var = tk.DoubleVar()
-
-    download_info = tk.StringVar()
-    download_info.set("Загрузка...")
-
-    java_arguments_var = tk.StringVar()
-    java_arguments_var.set(chosen_java_arguments)
-
-    show_console_var = tk.BooleanVar()
-    show_console_var.set(bool(show_console_position))
-
-    ely_password_var = tk.StringVar()
-    ely_username_var = tk.StringVar()
-    if not chosen_nickname == "Player":
-        ely_username_var.set(chosen_nickname)
-
-    sign_status_var = tk.StringVar()
-
-    show_old_alphas_var = tk.BooleanVar()
-    show_old_alphas_var.set(show_old_alphas_postion)
-    show_old_betas_var = tk.BooleanVar()
-    show_old_betas_var.set(show_old_betas_postion)
-    show_snapshots_var = tk.BooleanVar()
-    show_snapshots_var.set(show_snapshots_postion)
-    show_releases_var = tk.BooleanVar()
-    show_releases_var.set(show_releases_postion)
-
-    bg_image = tk.PhotoImage(
-        file=os.path.join(
-            "assets",
-            "background.png",
+        self.setFixedSize(300, 500)
+        self.minecraft_directory = (
+            minecraft_launcher_lib.utils.get_minecraft_directory()
         )
-    )
-    bg_label = ttk.Label(root, image=bg_image)
-    bg_label.place(relwidth=1, relheight=1)
 
-    versions_names_list = []
-    minecraft_directory = minecraft_launcher_lib.utils.get_minecraft_directory()
+        self.raw_version = self.chosen_version
+        self.mod_loader = self.chosen_mod_loader
+        self.sodium = int(self.sodium_position)
+        self.nickname = self.chosen_nickname
 
-    versions_combobox = ttk.Combobox(
-        root, values=versions_names_list, textvariable=version_var
-    )
-    versions_combobox.place(x=80, y=30, anchor="center", relwidth=0.43)
-    versions_combobox["state"] = "readonly"
-    showversions(
-        show_old_alphas_var.get(),
-        show_old_betas_var.get(),
-        show_snapshots_var.get(),
-        show_releases_var.get(),
-    )
+        self.java_arguments = self.chosen_java_arguments
+        self.show_console = int(self.show_console_position)
 
-    mod_loaders = ["fabric", "forge", "quilt", "neoforge", "vanilla"]
-    loaders_combobox = ttk.Combobox(
-        root, values=mod_loaders, textvariable=mod_loader_var
-    )
-    loaders_combobox.place(x=220, y=30, anchor="center", relwidth=0.43)
-    loaders_combobox["state"] = "readonly"
+        self.show_old_alphas = int(self.show_old_alphas_position)
+        self.show_old_betas = int(self.show_old_betas_position)
+        self.show_snapshots = int(self.show_snapshots_position)
+        self.show_releases = int(self.show_releases_position)
 
-    nickname_entry = ttk.Entry(root, textvariable=nickname_var)
-    nickname_entry.place(relx=0.5, y=70, anchor="center", relwidth=0.9)
+        self.versions_combobox = QtWidgets.QComboBox(self)
+        self.versions_combobox.move(20, 20)
+        self.versions_combobox.setFixedWidth(120)
+        showversions(
+            self,
+            self.show_old_alphas,
+            self.show_old_betas,
+            self.show_snapshots,
+            self.show_releases,
+        )
+        self.versions_combobox.setCurrentText(self.raw_version)
+        self.versions_combobox.currentTextChanged.connect(
+            lambda pos: self.set_var(pos, "version")
+        )
 
-    sodium_checkbox = ttk.Checkbutton(root, text="Sodium", variable=sodium_var)
-    sodium_checkbox.place(relx=0.5, y=110, anchor="center", relwidth=0.9)
-    block_sodium_checkbox()
-    root.bind("<<ComboboxSelected>>", block_sodium_checkbox)
+        self.nickname_entry = QtWidgets.QLineEdit(self)
+        self.nickname_entry.move(20, 60)
+        self.nickname_entry.setFixedWidth(260)
+        self.nickname_entry.setPlaceholderText("Никнейм")
+        self.nickname_entry.setText(self.nickname)
+        self.nickname_entry.textChanged.connect(
+            lambda pos: self.set_var(pos, "nickname")
+        )
 
-    start_button = ttk.Button(root, text="Запуск", command=on_start_button)
-    start_button.place(relx=0.5, y=150, anchor="center", relwidth=0.9)
+        self.sodium_checkbox = QtWidgets.QCheckBox(self)
+        self.sodium_checkbox.setText("Sodium")
+        self.sodium_checkbox.move(20, 100)
+        self.sodium_checkbox.setFixedWidth(260)
+        self.sodium_checkbox.setChecked(self.sodium)
+        self.sodium_checkbox.stateChanged.connect(
+            lambda pos: self.set_var(pos, "sodium")
+        )
 
-    progressbar = ttk.Progressbar(root, variable=progress_var, length=295)
-    progressbar.place(relx=0.5, y=400, anchor="center")
+        mod_loaders = ["fabric", "forge", "quilt", "neoforge", "vanilla"]
+        self.loaders_combobox = QtWidgets.QComboBox(self)
+        self.loaders_combobox.addItems(mod_loaders)
+        self.loaders_combobox.move(160, 20)
+        self.loaders_combobox.setFixedWidth(120)
+        self.loaders_combobox.setCurrentText(self.chosen_mod_loader)
+        self.block_sodium_checkbox()
+        self.loaders_combobox.currentIndexChanged.connect(self.block_sodium_checkbox)
+        self.loaders_combobox.currentTextChanged.connect(
+            lambda pos: self.set_var(pos, "mod_loader")
+        )
 
-    download_info_label = ttk.Label(
-        textvariable=download_info, font=("", 8), wraplength=290, justify="center"
-    )
+        self.start_button = QtWidgets.QPushButton(self)
+        self.start_button.setText("Запуск")
+        self.start_button.setFixedWidth(260)
+        self.start_button.clicked.connect(self.on_start_button)
+        self.start_button.move(20, 140)
 
-    settings_button = ttk.Button(root, text="⚙️", command=open_settings)
-    settings_button.place(x=270, y=480, anchor="center", relwidth=0.15)
+        self.progressbar = QtWidgets.QProgressBar(self, textVisible=False)
+        self.progressbar.setFixedWidth(260)
+        self.progressbar.move(20, 400)
 
-    account_button = ttk.Button(root, text="Аккаунт", command=skins_system)
-    account_button.place(x=40, y=480, anchor="center")
+        self.download_info_label = QtWidgets.QLabel(self)
+        self.download_info_label.setFixedWidth(200)
 
-    sv_ttk.set_theme("dark")
-    root.protocol("WM_DELETE_WINDOW", save_config)
+        self.settings_button = QtWidgets.QPushButton(self)
+        self.settings_button.setText("⚙️")
+        self.settings_button.clicked.connect(
+            lambda: SettingsWindow(
+                self,
+                self.java_arguments,
+                self.show_console,
+                self.show_old_alphas,
+                self.show_old_betas,
+                self.show_snapshots,
+                self.show_releases,
+            )
+        )
+        self.settings_button.move(5, 465)
+        self.settings_button.setFixedSize(30, 30)
 
-    access_token, ely_uuid = auto_login()
+        self.account_button = QtWidgets.QPushButton(self)
+        self.account_button.setText("🩻")
+        self.account_button.clicked.connect(lambda: AccountWindow(self))
+        self.account_button.move(265, 465)
+        self.account_button.setFixedSize(30, 30)
 
-    root.mainloop()
+        self.access_token, self.ely_uuid = self.auto_login()
+
+        self.show()
+        sys.exit(app.exec())
 
 
-@catch_errors
 def prepare_installation_parameters(
     mod_loader, nickname, java_arguments, ely_uuid, access_token, minecraft_directory
 ):
@@ -658,7 +742,6 @@ def prepare_installation_parameters(
     return install_type, minecraft_directory, options
 
 
-@catch_errors
 def download_injector(raw_version, minecraft_directory, nickname, options, version):
     if version != "InstalledVersionsOnly":
         json_path = os.path.join(
@@ -677,8 +760,11 @@ def download_injector(raw_version, minecraft_directory, nickname, options, versi
                     authlib_version = lib["name"].split(":")[-1]
                     break
         if authlib_version is not None:
-            textures = json.loads(
-                requests.get(f"http://skinsystem.ely.by/profile/{nickname}").content
+            textures_info = requests.get(f"http://skinsystem.ely.by/profile/{nickname}")
+            textures = (
+                json.loads(textures_info.content)
+                if textures_info.status_code == 200
+                else {}
             )
             textures_payload = {
                 "timestamp": int(time.time() * 1000),
@@ -700,22 +786,24 @@ def download_injector(raw_version, minecraft_directory, nickname, options, versi
                 )
             return True
         else:
-            messagebox.showwarning(
-                "Ошибка скина", "На данной версии нет authlib, скины не поддерживаются."
+            gui_messenger.warning.emit(
+                "Ошибка скина",
+                "На данной версии нет authlib, скины не поддерживаются.",
             )
             return False
     else:
-        messagebox.showwarning("Ошибка скина", "Отсутсвует подключение к интернету.")
+        gui_messenger.warning.emit(
+            "Ошибка скина", "Отсутсвует подключение к интернету."
+        )
         return False
 
 
-@catch_errors
 def install_version(
     version,
     install_type,
     minecraft_directory,
-    progress_var,
-    download_info,
+    progressbar,
+    download_info_label,
     mod_loader,
     raw_version,
     options,
@@ -727,7 +815,6 @@ def install_version(
     last_track_progress_call_time = time.time()
     last_progress_info = ""
 
-    @catch_errors
     def resolve_version_name(installed_versions_json_path, check_after_download=False):
         if not os.path.isfile(installed_versions_json_path):
             with open(
@@ -738,7 +825,10 @@ def install_version(
             installed_versions_json_path, "r", encoding="utf-8"
         ) as installed_versions_json_file:
             installed_versions = json.load(installed_versions_json_file)
-        if f"{mod_loader}{raw_version}" in installed_versions or check_after_download:
+        if (
+            f"{mod_loader}{raw_version}" in installed_versions["installed_versions"]
+            or check_after_download
+        ):
             for v in minecraft_launcher_lib.utils.get_installed_versions(
                 minecraft_directory
             ):
@@ -763,7 +853,6 @@ def install_version(
         else:
             return None
 
-    @catch_errors
     def track_progress(value, type):
         nonlocal progress, max_progress, last_track_progress_call_time, last_progress_info, percents
         if time.time() - last_track_progress_call_time > 1 or (
@@ -780,11 +869,11 @@ def install_version(
                     percents = 0
                 if percents > 100.0:
                     percents = 100.0
-                progress_var.set(percents)
+                progressbar.setValue(percents)
                 last_track_progress_call_time = time.time()
             else:
                 last_progress_info = value
-                download_info.set(value)
+                download_info_label.setText(value)
 
     name_of_folder_with_version = resolve_version_name(installed_versions_json_path)
     if name_of_folder_with_version is not None:
@@ -805,20 +894,19 @@ def install_version(
         if name_of_folder_with_version is not None:
             return name_of_folder_with_version, minecraft_directory, options
         else:
-            messagebox.showerror(
+            gui_messenger.critical.emit(
                 "Ошибка загрузки",
                 "Произошла непредвиденная ошибка во время загрузки версии.",
             )
             return None
     else:
-        messagebox.showerror(
+        gui_messenger.critical.emit(
             "Ошибка подключения",
             "Вы в оффлайн-режиме.\nВерсия отсутсвует на вашем компьютере, загрузка невозможна.\nПопробуйте перезапустить лаунчер.",
         )
 
 
-@catch_errors
-def download_sodium(sodium_path, raw_version, download_info):
+def download_sodium(sodium_path, raw_version, download_info_label):
     url = None
     for sodium_version in requests.get(
         "https://api.modrinth.com/v2/project/sodium/version"
@@ -830,32 +918,29 @@ def download_sodium(sodium_path, raw_version, download_info):
             url = sodium_version["files"][0]["url"]
             break
     else:
-        messagebox.showwarning(
+        gui_messenger.warning.emit(
             "Запуск без sodium", "Sodium недоступен на выбранной вами версии."
         )
     if url:
-        download_info.set("Загрузка Sodium...")
+        download_info_label.setText("Загрузка Sodium...")
         with open(sodium_path, "wb") as sodium_jar:
             sodium_jar.write(requests.get(url).content)
 
 
-@catch_errors
 def launch(
     mod_loader,
     nickname,
     raw_version,
     java_arguments,
     start_button,
-    progress_var,
-    download_info,
+    progressbar,
+    download_info_label,
     sodium,
     ely_uuid,
     access_token,
     show_console,
     minecraft_directory,
 ):
-    global java_path, CLIENT_ID, start_launcher_time
-
     installed_versions_json_path = os.path.join(
         minecraft_directory, "installed_versions.json"
     )
@@ -873,8 +958,8 @@ def launch(
         raw_version,
         install_type,
         minecraft_directory,
-        progress_var,
-        download_info,
+        progressbar,
+        download_info_label,
         mod_loader,
         raw_version,
         options,
@@ -896,8 +981,9 @@ def launch(
                 installed_versions["installed_versions"].append(f"vanilla{raw_version}")
             json.dump(installed_versions, installed_versions_json_file)
         version, minecraft_directory, options = launch_info
-        download_info.set("Загрузка injector...")
-        progress_var.set(100)
+        download_info_label.setText("Загрузка injector...")
+        progressbar.setValue(100)
+        options["jvmArguments"] = options["jvmArguments"].split()
         if download_injector(
             raw_version, minecraft_directory, nickname, options, raw_version
         ):
@@ -913,10 +999,9 @@ def launch(
         if os.path.isfile(sodium_path):
             os.remove(sodium_path)
         if sodium and mod_loader == "fabric":
-            download_sodium(sodium_path, raw_version, download_info)
+            download_sodium(sodium_path, raw_version, download_info_label)
 
-        download_info.set("Версия установлена, запуск...")
-
+        download_info_label.setText("Версия установлена, запуск...")
         minecraft_process = subprocess.Popen(
             minecraft_launcher_lib.command.get_minecraft_command(
                 version, minecraft_directory, options
@@ -928,17 +1013,16 @@ def launch(
                 else {}
             ),
         )
-        download_info.set("Игра запущена")
+        download_info_label.setText("Игра запущена")
         start_rich_presence(
             CLIENT_ID, start_launcher_time, minecraft_process, raw_version, mod_loader
         )
-    start_button["state"] = "normal"
 
 
 if __name__ == "__main__":
     start_rich_presence(CLIENT_ID, start_launcher_time)
     config = load_config()
-    gui(
+    window = MainWindow(
         config["version"],
         config["mod_loader"],
         config["nickname"],
@@ -952,3 +1036,4 @@ if __name__ == "__main__":
         config["show_snapshots"],
         config["show_releases"],
     )
+    app.aboutToQuit.connect(window.save_config)
