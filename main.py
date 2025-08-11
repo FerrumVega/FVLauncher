@@ -16,9 +16,10 @@ import datetime
 import logging
 
 logging.basicConfig(
-    filename="FVLauncher.log",
     level=logging.DEBUG,
-    format="%(asctime)s - %(levelname)s - %(message)s",
+    filename="FVLauncher.log",
+    filemode="w",
+    format="%(asctime)s %(levelname)s %(message)s",
 )
 
 
@@ -34,22 +35,6 @@ class GuiMessenger(QObject):
         self.info.connect(lambda t, m: QtWidgets.QMessageBox.information(None, t, m))
 
 
-app = QtWidgets.QApplication(sys.argv)
-app.setStyle(QtWidgets.QStyleFactory.create("windows11"))
-gui_messenger = GuiMessenger()
-
-java_path = minecraft_launcher_lib.utils.get_java_executable()
-if java_path == "java" or java_path == "javaw":
-    gui_messenger.critical.emit(
-        "Java не найдена",
-        "На вашем компьюетере отсутствует java, загрузите её с github лаунчера.",
-    )
-    os._exit(1)
-
-CLIENT_ID = "1399428342117175497"
-start_launcher_time = int(time.time())
-
-
 def catch_errors(func):
     def wrapper(*args, **kwargs):
         try:
@@ -58,6 +43,7 @@ def catch_errors(func):
             gui_messenger.critical.emit(
                 "Ошибка", f"Произошла ошибка в {func.__name__}:\n{e}"
             )
+            logging.critical(f"Exception in {func.__name__}: {repr(e)}")
 
     return wrapper
 
@@ -150,11 +136,11 @@ def load_config():
         "sodium": "0",
         "access_token": "",
         "ely_uuid": "",
-        "show_console": "0",
-        "show_old_alphas": "0",
-        "show_old_betas": "0",
-        "show_snapshots": "0",
-        "show_releases": "1",
+        "show_console": "False",
+        "show_old_alphas": "False",
+        "show_old_betas": "False",
+        "show_snapshots": "False",
+        "show_releases": "True",
     }
 
     config_path = "FVLauncher.ini"
@@ -204,7 +190,6 @@ class SettingsWindow(QtWidgets.QMainWindow):
         self._make_ui()
 
     def set_var(self, pos, var):
-        print(pos, var)
         if var == "java_arguments":
             self.window.java_arguments = pos
         elif var == "show_console":
@@ -222,6 +207,7 @@ class SettingsWindow(QtWidgets.QMainWindow):
         self.settings_window = QtWidgets.QDialog()
         self.settings_window.setWindowTitle("Настройки")
         self.settings_window.setFixedSize(300, 500)
+        self.setWindowIcon(window_icon)
 
         self.java_arguments_label = QtWidgets.QLabel(
             self.settings_window, text="java-аргументы"
@@ -356,14 +342,19 @@ class AccountWindow(QtWidgets.QMainWindow):
             )
             if self.sign_status_label.text() == "Статус: вы вошли в аккаунт":
                 gui_messenger.critical.emit(
-                    "Ошибка входа",
-                    "Сначала выйдите из аккаунта",
+                    "Ошибка входа", "Сначала выйдите из аккаунта"
+                )
+                logging.error(
+                    f"Error message showed in login: login error, sign out before login"
                 )
             elif self.data.status_code == 200:
                 self.window.access_token = self.data.json()["accessToken"]
                 self.window.ely_uuid = self.data.json()["user"]["id"]
                 gui_messenger.info.emit(
                     "Поздравляем!", "Теперь вы будете видеть свой скин в игре."
+                )
+                logging.info(
+                    f"Info message showed in login: ely skin will be shown in game"
                 )
                 self.window.sign_status = "Статус: вы вошли в аккаунт"
                 self.sign_status_label.setText(self.window.sign_status)
@@ -373,6 +364,9 @@ class AccountWindow(QtWidgets.QMainWindow):
                 gui_messenger.critical.emit(
                     "Ошибка входа",
                     f"Текст ошибки: {self.data.json()['errorMessage']}",
+                )
+                logging.error(
+                    f"Error message showed in login: login error, {self.data.json()['errorMessage']}"
                 )
 
         def signout():
@@ -386,22 +380,23 @@ class AccountWindow(QtWidgets.QMainWindow):
             self.window.access_token = ""
             self.window.ely_uuid = ""
             if self.data.status_code == 200:
-                gui_messenger.info.emit(
-                    "Выход из аккаунта",
-                    "Вы вышли из аккаунта",
-                )
+                gui_messenger.info.emit("Выход из аккаунта", "Вы вышли из аккаунта")
+                logging.info(f"Info message showed in signout: successfully signed out")
                 self.window.nickname_entry.setReadOnly(False)
                 self.window.sign_status = "Статус: вы вышли из аккаунта"
                 self.sign_status_label.setText(self.window.sign_status)
             else:
                 gui_messenger.critical.emit(
-                    "Ошибка выхода",
-                    self.data.json()["errorMessage"],
+                    "Ошибка выхода", self.data.json()["errorMessage"]
+                )
+                logging.error(
+                    f"Error message showed in signout: sign out error, {self.data.json()['errorMessage']}"
                 )
 
         self.account_window = QtWidgets.QDialog()
         self.account_window.setWindowTitle("Настройки")
         self.account_window.setFixedSize(300, 500)
+        self.setWindowIcon(window_icon)
 
         self.ely_username = QtWidgets.QLineEdit(self.account_window)
         self.ely_username.setPlaceholderText("Никнейм аккаунта ely.by")
@@ -468,6 +463,10 @@ class MainWindow(QtWidgets.QMainWindow):
         self.client_token = str(uuid.uuid5(uuid.NAMESPACE_DNS, str(uuid.getnode())))
         self._make_ui()
 
+    def closeEvent(self, event):
+        self.save_config()
+        return super().closeEvent(event)
+
     def v1_6_or_higher(self, raw_version):
         for version in minecraft_launcher_lib.utils.get_version_list():
             if raw_version == version["id"]:
@@ -523,12 +522,9 @@ class MainWindow(QtWidgets.QMainWindow):
             self.sodium_checkbox.setDisabled(True)
 
     def on_start_button(self):
-        logging.debug("Button clicked")
         if self.mod_loader_is_supported(self.raw_version, self.mod_loader):
-            logging.debug("Mod loader is avaliable")
             self.download_info_label.move(50, 450)
             self.download_info_label.setAlignment(Qt.AlignCenter)
-            logging.debug("Minecraft thread initialized")
             minecraft_thread = threading.Thread(
                 target=launch,
                 args=(
@@ -548,15 +544,15 @@ class MainWindow(QtWidgets.QMainWindow):
                 daemon=True,
             )
             minecraft_thread.start()
-            logging.debug("Minecraft thread started")
         else:
             gui_messenger.critical.emit(
-                "Ошибка",
-                "Для данной версии нет выбранного вами загрузчика модов.",
+                "Ошибка", "Для данной версии нет выбранного вами загрузчика модов."
+            )
+            logging.error(
+                f"Error message showed in on_start_button: mod loader {self.mod_loader} is not supported on the {self.raw_version} version"
             )
 
     def set_var(self, pos, var):
-        print(pos, var)
         if var == "sodium":
             self.sodium = pos
         elif var == "mod_loader":
@@ -621,16 +617,7 @@ class MainWindow(QtWidgets.QMainWindow):
         # )
         self.setWindowTitle("FVLauncher")
         self.sign_status = ""
-        self.setWindowIcon(
-            QtGui.QIcon(
-                (
-                    os.path.join(
-                        "assets",
-                        "minecraft_title.png",
-                    )
-                )
-            )
-        )
+        self.setWindowIcon(window_icon)
 
         self.setFixedSize(300, 500)
         self.minecraft_directory = (
@@ -639,16 +626,16 @@ class MainWindow(QtWidgets.QMainWindow):
 
         self.raw_version = self.chosen_version
         self.mod_loader = self.chosen_mod_loader
-        self.sodium = int(self.sodium_position)
+        self.sodium = self.sodium_position == "True"
         self.nickname = self.chosen_nickname
 
         self.java_arguments = self.chosen_java_arguments
-        self.show_console = int(self.show_console_position)
+        self.show_console = self.show_console_position == "True"
 
-        self.show_old_alphas = int(self.show_old_alphas_position)
-        self.show_old_betas = int(self.show_old_betas_position)
-        self.show_snapshots = int(self.show_snapshots_position)
-        self.show_releases = int(self.show_releases_position)
+        self.show_old_alphas = self.show_old_alphas_position == "True"
+        self.show_old_betas = self.show_old_betas_position == "True"
+        self.show_snapshots = self.show_snapshots_position == "True"
+        self.show_releases = self.show_releases_position == "True"
 
         self.versions_combobox = QtWidgets.QComboBox(self)
         self.versions_combobox.move(20, 20)
@@ -804,13 +791,18 @@ def download_injector(raw_version, minecraft_directory, nickname, options, versi
             return True
         else:
             gui_messenger.warning.emit(
-                "Ошибка скина",
-                "На данной версии нет authlib, скины не поддерживаются.",
+                "Ошибка скина", "На данной версии нет authlib, скины не поддерживаются."
+            )
+            logging.warning(
+                f"Warning message showed in download_injector: skins not supported on {version} version (raw version is {raw_version})"
             )
             return False
     else:
         gui_messenger.warning.emit(
             "Ошибка скина", "Отсутсвует подключение к интернету."
+        )
+        logging.warning(
+            f"Warning message showed in download_injector: skin error, no internet connection"
         )
         return False
 
@@ -915,11 +907,17 @@ def install_version(
                 "Ошибка загрузки",
                 "Произошла непредвиденная ошибка во время загрузки версии.",
             )
+            logging.error(
+                f"Error message showed in install_version: error after download {version} version (raw version is {raw_version})"
+            )
             return None
     else:
         gui_messenger.critical.emit(
             "Ошибка подключения",
-            "Вы в оффлайн-режиме.\nВерсия отсутсвует на вашем компьютере, загрузка невозможна.\nПопробуйте перезапустить лаунчер.",
+            "Вы в оффлайн-режиме. Версия отсутсвует на вашем компьютере, загрузка невозможна. Попробуйте перезапустить лаунчер.",
+        )
+        logging.error(
+            f"Error message showed in install_version: cannot download version because there is not internet connection"
         )
 
 
@@ -937,6 +935,9 @@ def download_sodium(sodium_path, raw_version, download_info_label):
     else:
         gui_messenger.warning.emit(
             "Запуск без sodium", "Sodium недоступен на выбранной вами версии."
+        )
+        logging.warning(
+            f"Warning message showed in download_sodium: sodium is not support on {raw_version} version"
         )
     if url:
         download_info_label.setText("Загрузка Sodium...")
@@ -961,8 +962,8 @@ def launch(
     installed_versions_json_path = os.path.join(
         minecraft_directory, "installed_versions.json"
     )
-
-    logging.debug("Preparing installation parameters...")
+    if not os.path.isdir(minecraft_directory):
+        os.mkdir(minecraft_directory)
 
     install_type, minecraft_directory, options = prepare_installation_parameters(
         mod_loader,
@@ -972,8 +973,6 @@ def launch(
         access_token,
         minecraft_directory,
     )
-
-    logging.debug("Installing version...")
 
     launch_info = install_version(
         raw_version,
@@ -987,10 +986,7 @@ def launch(
         installed_versions_json_path,
     )
 
-    logging.debug("Version installed")
-
     if launch_info is not None:
-        logging.debug("Launching...")
         with open(
             installed_versions_json_path, "r", encoding="utf-8"
         ) as installed_versions_json_file:
@@ -1044,6 +1040,29 @@ def launch(
 
 
 if __name__ == "__main__":
+    app = QtWidgets.QApplication(sys.argv)
+    app.setStyle(QtWidgets.QStyleFactory.create("windows11"))
+    gui_messenger = GuiMessenger()
+
+    java_path = minecraft_launcher_lib.utils.get_java_executable()
+    if java_path == "java" or java_path == "javaw":
+        gui_messenger.critical.emit(
+            "Java не найдена",
+            "На вашем компьютере отсутствует java, загрузите её с github лаунчера.",
+        )
+        logging.error(f"Error message showed while checking java: java not found")
+        os._exit(1)
+
+    CLIENT_ID = "1399428342117175497"
+    start_launcher_time = int(time.time())
+    window_icon = QtGui.QIcon(
+        (
+            os.path.join(
+                "assets",
+                "minecraft_title.png",
+            )
+        )
+    )
     start_rich_presence(CLIENT_ID, start_launcher_time)
     config = load_config()
     window = MainWindow(

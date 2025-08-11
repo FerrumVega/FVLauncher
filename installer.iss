@@ -1,7 +1,7 @@
 [Setup]
 AppId={{0E31B735-0AF6-46E0-A33D-701CFD1F9502}}
 AppName=FVLauncher
-AppVersion=1.0.0
+AppVersion=v1.0
 AppPublisher=FerrumVega
 AppPublisherURL=https://www.github.com/FerrumVega/FVLauncher
 AppSupportURL=https://www.github.com/FerrumVega/FVLauncher
