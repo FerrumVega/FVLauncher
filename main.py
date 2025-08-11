@@ -13,6 +13,13 @@ import pypresence
 import time
 import base64
 import datetime
+import logging
+
+logging.basicConfig(
+    filename="FVLauncher.log",
+    level=logging.DEBUG,
+    format="%(asctime)s - %(levelname)s - %(message)s",
+)
 
 
 class GuiMessenger(QObject):
@@ -358,7 +365,8 @@ class AccountWindow(QtWidgets.QMainWindow):
                 gui_messenger.info.emit(
                     "Поздравляем!", "Теперь вы будете видеть свой скин в игре."
                 )
-                self.sign_status_label.setText("Статус: вы вошли в аккаунт")
+                self.window.sign_status = "Статус: вы вошли в аккаунт"
+                self.sign_status_label.setText(self.window.sign_status)
                 self.window.nickname_entry.setText(self.data.json()["user"]["username"])
                 self.window.nickname_entry.setReadOnly(True)
             else:
@@ -383,7 +391,8 @@ class AccountWindow(QtWidgets.QMainWindow):
                     "Вы вышли из аккаунта",
                 )
                 self.window.nickname_entry.setReadOnly(False)
-                self.sign_status_label.setText("Статус: вы вышли из аккаунта")
+                self.window.sign_status = "Статус: вы вышли из аккаунта"
+                self.sign_status_label.setText(self.window.sign_status)
             else:
                 gui_messenger.critical.emit(
                     "Ошибка выхода",
@@ -514,9 +523,12 @@ class MainWindow(QtWidgets.QMainWindow):
             self.sodium_checkbox.setDisabled(True)
 
     def on_start_button(self):
+        logging.debug("Button clicked")
         if self.mod_loader_is_supported(self.raw_version, self.mod_loader):
+            logging.debug("Mod loader is avaliable")
             self.download_info_label.move(50, 450)
             self.download_info_label.setAlignment(Qt.AlignCenter)
+            logging.debug("Minecraft thread initialized")
             minecraft_thread = threading.Thread(
                 target=launch,
                 args=(
@@ -536,6 +548,7 @@ class MainWindow(QtWidgets.QMainWindow):
                 daemon=True,
             )
             minecraft_thread.start()
+            logging.debug("Minecraft thread started")
         else:
             gui_messenger.critical.emit(
                 "Ошибка",
@@ -651,6 +664,8 @@ class MainWindow(QtWidgets.QMainWindow):
         self.versions_combobox.currentTextChanged.connect(
             lambda pos: self.set_var(pos, "version")
         )
+        self.versions_combobox.setFixedHeight(30)
+        self.versions_combobox.setEditable(True)
 
         self.nickname_entry = QtWidgets.QLineEdit(self)
         self.nickname_entry.move(20, 60)
@@ -681,6 +696,8 @@ class MainWindow(QtWidgets.QMainWindow):
         self.loaders_combobox.currentTextChanged.connect(
             lambda pos: self.set_var(pos, "mod_loader")
         )
+        self.loaders_combobox.setFixedHeight(30)
+        self.loaders_combobox.setEditable(True)
 
         self.start_button = QtWidgets.QPushButton(self)
         self.start_button.setText("Запуск")
@@ -945,6 +962,8 @@ def launch(
         minecraft_directory, "installed_versions.json"
     )
 
+    logging.debug("Preparing installation parameters...")
+
     install_type, minecraft_directory, options = prepare_installation_parameters(
         mod_loader,
         nickname,
@@ -953,6 +972,8 @@ def launch(
         access_token,
         minecraft_directory,
     )
+
+    logging.debug("Installing version...")
 
     launch_info = install_version(
         raw_version,
@@ -966,7 +987,10 @@ def launch(
         installed_versions_json_path,
     )
 
+    logging.debug("Version installed")
+
     if launch_info is not None:
+        logging.debug("Launching...")
         with open(
             installed_versions_json_path, "r", encoding="utf-8"
         ) as installed_versions_json_file:
