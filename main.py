@@ -18,9 +18,10 @@ import logging
 logging.basicConfig(
     level=logging.DEBUG,
     filename="FVLauncher.log",
-    filemode="w",
+    filemode="a",
     format="%(asctime)s %(levelname)s %(message)s",
 )
+logging.debug("Program started its work")
 
 
 class GuiMessenger(QObject):
@@ -465,7 +466,310 @@ class MainWindow(QtWidgets.QMainWindow):
 
     def closeEvent(self, event):
         self.save_config()
+        logging.debug("Launcher was closed")
         return super().closeEvent(event)
+
+    def prepare_installation_parameters(self):
+        if self.mod_loader != "vanilla":
+            install_type = minecraft_launcher_lib.mod_loader.get_mod_loader(
+                self.mod_loader
+            ).install
+        else:
+            install_type = minecraft_launcher_lib.install.install_minecraft_version
+        options = {
+            "username": self.nickname,
+            "uuid": self.ely_uuid,
+            "token": self.access_token,
+            "jvmArguments": self.java_arguments,
+            "executablePath": java_path,
+        }
+        return install_type, options
+
+    def download_injector(self, options, version):
+        if self.mod_loader_info != "InstalledVersionsOnly":
+            json_path = os.path.join(
+                self.minecraft_directory,
+                "versions",
+                self.raw_version,
+                f"{self.raw_version}.json",
+            )
+            if not minecraft_launcher_lib.utils.is_vanilla_version(self.raw_version):
+                with open(json_path) as file_with_downloads:
+                    self.raw_version = json.load(file_with_downloads)["inheritsFrom"]
+            json_path = os.path.join(
+                self.minecraft_directory,
+                "versions",
+                self.raw_version,
+                f"{self.raw_version}.json",
+            )
+            authlib_version = None
+            with open(json_path) as file_with_downloads:
+                for lib in json.load(file_with_downloads)["libraries"]:
+                    if lib["name"].startswith("com.mojang:authlib:"):
+                        authlib_version = lib["name"].split(":")[-1]
+                        break
+            if authlib_version is not None:
+                textures_info = requests.get(
+                    f"http://skinsystem.ely.by/profile/{self.nickname}"
+                )
+                textures = (
+                    json.loads(textures_info.content)
+                    if textures_info.status_code == 200
+                    else {}
+                )
+                textures_payload = {
+                    "timestamp": int(time.time() * 1000),
+                    "profileName": self.nickname,
+                    "textures": textures,
+                }
+                textures_b64 = base64.b64encode(
+                    json.dumps(textures_payload).encode()
+                ).decode()
+                options["user_properties"] = {"textures": [textures_b64]}
+
+                with open(
+                    os.path.join(self.minecraft_directory, "authlib-injector.jar"), "wb"
+                ) as injector_jar:
+                    injector_jar.write(
+                        requests.get(
+                            "https://github.com/yushijinhun/authlib-injector/releases/download/v1.2.5/authlib-injector-1.2.5.jar"
+                        ).content
+                    )
+                return True
+            else:
+                gui_messenger.warning.emit(
+                    "Ошибка скина",
+                    "На данной версии нет authlib, скины не поддерживаются.",
+                )
+                logging.warning(
+                    f"Warning message showed in download_injector: skins not supported on {version} version (raw version is {self.raw_version})"
+                )
+                return False
+        else:
+            gui_messenger.warning.emit(
+                "Ошибка скина", "Отсутсвует подключение к интернету."
+            )
+            logging.warning(
+                f"Warning message showed in download_injector: skin error, no internet connection"
+            )
+            return False
+
+    def install_version(
+        self,
+        install_type,
+        options,
+        installed_versions_json_path,
+    ):
+        progress = 0
+        max_progress = 100
+        percents = 0
+        last_track_progress_call_time = time.time()
+        last_progress_info = ""
+
+        def resolve_version_name(
+            installed_versions_json_path, check_after_download=False
+        ):
+            if not os.path.isfile(installed_versions_json_path):
+                with open(
+                    installed_versions_json_path, "w", encoding="utf-8"
+                ) as installed_versions_json_file:
+                    json.dump({"installed_versions": []}, installed_versions_json_file)
+            with open(
+                installed_versions_json_path, "r", encoding="utf-8"
+            ) as installed_versions_json_file:
+                installed_versions = json.load(installed_versions_json_file)
+            if (
+                f"{self.mod_loader}{self.raw_version}"
+                in installed_versions["installed_versions"]
+                or check_after_download
+            ):
+                for v in minecraft_launcher_lib.utils.get_installed_versions(
+                    self.minecraft_directory
+                ):
+                    folder_name = v["id"]
+                    if self.mod_loader == "vanilla" and folder_name == self.raw_version:
+                        return folder_name
+                    elif (
+                        self.mod_loader == "neoforge" and self.mod_loader in folder_name
+                    ):
+                        with open(
+                            os.path.join(
+                                self.minecraft_directory,
+                                "versions",
+                                folder_name,
+                                f"{folder_name}.json",
+                            )
+                        ) as version_info:
+                            if (
+                                json.load(version_info)["inheritsFrom"]
+                                == self.raw_version
+                            ):
+                                return folder_name
+                    elif (
+                        self.mod_loader in folder_name
+                        and self.raw_version in folder_name
+                    ):
+                        return folder_name
+                else:
+                    return None
+            else:
+                return None
+
+        def track_progress(value, type):
+            nonlocal progress, max_progress, last_track_progress_call_time, last_progress_info, percents
+            if time.time() - last_track_progress_call_time > 1 or (
+                type == "progress_info" and value != last_progress_info
+            ):
+                if type != "progress_info":
+                    if type == "progress":
+                        progress = value
+                    elif type == "max":
+                        max_progress = value
+                    try:
+                        percents = progress / max_progress * 100
+                    except ZeroDivisionError:
+                        percents = 0
+                    if percents > 100.0:
+                        percents = 100.0
+                    self.progressbar.setValue(percents)
+                    last_track_progress_call_time = time.time()
+                else:
+                    last_progress_info = value
+                    self.download_info_label.setText(value)
+
+        name_of_folder_with_version = resolve_version_name(installed_versions_json_path)
+        if name_of_folder_with_version is not None:
+            return name_of_folder_with_version, self.minecraft_directory, options
+        elif self.mod_loader_info != "InstalledVersionsOnly":
+            install_type(
+                self.raw_versionversion,
+                self.minecraft_directory,
+                callback={
+                    "setProgress": lambda value: track_progress(value, "progress"),
+                    "setMax": lambda value: track_progress(value, "max"),
+                    "setStatus": lambda value: track_progress(value, "progress_info"),
+                },
+            )
+            name_of_folder_with_version = resolve_version_name(
+                installed_versions_json_path, True
+            )
+            if name_of_folder_with_version is not None:
+                return name_of_folder_with_version, self.minecraft_directory, options
+            else:
+                gui_messenger.critical.emit(
+                    "Ошибка загрузки",
+                    "Произошла непредвиденная ошибка во время загрузки версии.",
+                )
+                logging.error(
+                    f"Error message showed in install_version: error after download {self.raw_version} version"
+                )
+                return None
+        else:
+            gui_messenger.critical.emit(
+                "Ошибка подключения",
+                "Вы в оффлайн-режиме. Версия отсутсвует на вашем компьютере, загрузка невозможна. Попробуйте перезапустить лаунчер.",
+            )
+            logging.error(
+                f"Error message showed in install_version: cannot download version because there is not internet connection"
+            )
+
+    def download_sodium(self, sodium_path):
+        url = None
+        for sodium_version in requests.get(
+            "https://api.modrinth.com/v2/project/sodium/version"
+        ).json():
+            if (
+                self.raw_version in sodium_version["game_versions"]
+                and "fabric" in sodium_version["loaders"]
+            ):
+                url = sodium_version["files"][0]["url"]
+                break
+        else:
+            gui_messenger.warning.emit(
+                "Запуск без sodium", "Sodium недоступен на выбранной вами версии."
+            )
+            logging.warning(
+                f"Warning message showed in download_sodium: sodium is not support on {self.raw_version} version"
+            )
+        if url:
+            self.download_info_label.setText("Загрузка Sodium...")
+            logging.debug("Installing sodium in download_sodium")
+            with open(sodium_path, "wb") as sodium_jar:
+                sodium_jar.write(requests.get(url).content)
+
+    def launch(self):
+        installed_versions_json_path = os.path.join(
+            self.minecraft_directory, "installed_versions.json"
+        )
+        if not os.path.isdir(self.minecraft_directory):
+            os.mkdir(self.minecraft_directory)
+
+        install_type, options = self.prepare_installation_parameters()
+
+        launch_info = self.install_version(
+            install_type,
+            options,
+            installed_versions_json_path,
+        )
+
+        if launch_info is not None:
+            with open(
+                installed_versions_json_path, "r", encoding="utf-8"
+            ) as installed_versions_json_file:
+                installed_versions = json.load(installed_versions_json_file)
+            with open(
+                installed_versions_json_path, "w", encoding="utf-8"
+            ) as installed_versions_json_file:
+                installed_versions["installed_versions"].append(
+                    f"{self.mod_loader}{self.raw_version}"
+                )
+                if self.mod_loader != "vanilla":
+                    installed_versions["installed_versions"].append(
+                        f"vanilla{self.raw_version}"
+                    )
+                json.dump(installed_versions, installed_versions_json_file)
+            version, self.minecraft_directory, options = launch_info
+            self.download_info_label.setText("Загрузка injector...")
+            logging.debug("Installing injector in launch")
+            self.progressbar.setValue(100)
+            options["jvmArguments"] = options["jvmArguments"].split()
+            if self.download_injector(options, version):
+                options["jvmArguments"].append(
+                    f"-javaagent:{os.path.join(self.minecraft_directory, 'authlib-injector.jar')}=ely.by"
+                )
+            else:
+                options.pop("executablePath")
+            sodium_path = os.path.join(self.minecraft_directory, "mods", "sodium.jar")
+
+            if not os.path.isdir(os.path.join(self.minecraft_directory, "mods")):
+                os.mkdir(os.path.join(self.minecraft_directory, "mods"))
+            if os.path.isfile(sodium_path):
+                os.remove(sodium_path)
+            if self.sodium and self.mod_loader == "fabric":
+                self.download_sodium(sodium_path)
+
+            self.download_info_label.setText("Версия установлена, запуск...")
+            logging.debug(f"Launching {version} version")
+            minecraft_process = subprocess.Popen(
+                minecraft_launcher_lib.command.get_minecraft_command(
+                    version, self.minecraft_directory, options
+                ),
+                cwd=self.minecraft_directory,
+                **(
+                    {"creationflags": subprocess.CREATE_NO_WINDOW}
+                    if not self.show_console
+                    else {}
+                ),
+            )
+            self.download_info_label.setText("Игра запущена")
+            logging.debug(f"Minecraft process started on {version} version")
+            start_rich_presence(
+                CLIENT_ID,
+                start_launcher_time,
+                minecraft_process,
+                self.raw_version,
+                self.mod_loader,
+            )
 
     def v1_6_or_higher(self, raw_version):
         for version in minecraft_launcher_lib.utils.get_version_list():
@@ -522,25 +826,14 @@ class MainWindow(QtWidgets.QMainWindow):
             self.sodium_checkbox.setDisabled(True)
 
     def on_start_button(self):
-        if self.mod_loader_is_supported(self.raw_version, self.mod_loader):
+        self.mod_loader_info = self.mod_loader_is_supported(
+            self.raw_version, self.mod_loader
+        )
+        if self.mod_loader_info:
             self.download_info_label.move(50, 450)
             self.download_info_label.setAlignment(Qt.AlignCenter)
             minecraft_thread = threading.Thread(
-                target=launch,
-                args=(
-                    self.mod_loader,
-                    self.nickname,
-                    self.raw_version,
-                    self.java_arguments,
-                    self.start_button,
-                    self.progressbar,
-                    self.download_info_label,
-                    self.sodium,
-                    self.ely_uuid,
-                    self.access_token,
-                    self.show_console,
-                    self.minecraft_directory,
-                ),
+                target=self.launch,
                 daemon=True,
             )
             minecraft_thread.start()
@@ -694,7 +987,7 @@ class MainWindow(QtWidgets.QMainWindow):
 
         self.progressbar = QtWidgets.QProgressBar(self, textVisible=False)
         self.progressbar.setFixedWidth(260)
-        self.progressbar.move(20, 400)
+        self.progressbar.move(20, 430)
 
         self.download_info_label = QtWidgets.QLabel(self)
         self.download_info_label.setFixedWidth(200)
@@ -725,318 +1018,6 @@ class MainWindow(QtWidgets.QMainWindow):
 
         self.show()
         sys.exit(app.exec())
-
-
-def prepare_installation_parameters(
-    mod_loader, nickname, java_arguments, ely_uuid, access_token, minecraft_directory
-):
-    if mod_loader != "vanilla":
-        install_type = minecraft_launcher_lib.mod_loader.get_mod_loader(
-            mod_loader
-        ).install
-    else:
-        install_type = minecraft_launcher_lib.install.install_minecraft_version
-    options = {
-        "username": nickname,
-        "uuid": ely_uuid,
-        "token": access_token,
-        "jvmArguments": java_arguments,
-        "executablePath": java_path,
-    }
-    return install_type, minecraft_directory, options
-
-
-def download_injector(raw_version, minecraft_directory, nickname, options, version):
-    if version != "InstalledVersionsOnly":
-        json_path = os.path.join(
-            minecraft_directory, "versions", raw_version, f"{raw_version}.json"
-        )
-        if not minecraft_launcher_lib.utils.is_vanilla_version(raw_version):
-            with open(json_path) as file_with_downloads:
-                raw_version = json.load(file_with_downloads)["inheritsFrom"]
-        json_path = os.path.join(
-            minecraft_directory, "versions", raw_version, f"{raw_version}.json"
-        )
-        authlib_version = None
-        with open(json_path) as file_with_downloads:
-            for lib in json.load(file_with_downloads)["libraries"]:
-                if lib["name"].startswith("com.mojang:authlib:"):
-                    authlib_version = lib["name"].split(":")[-1]
-                    break
-        if authlib_version is not None:
-            textures_info = requests.get(f"http://skinsystem.ely.by/profile/{nickname}")
-            textures = (
-                json.loads(textures_info.content)
-                if textures_info.status_code == 200
-                else {}
-            )
-            textures_payload = {
-                "timestamp": int(time.time() * 1000),
-                "profileName": nickname,
-                "textures": textures,
-            }
-            textures_b64 = base64.b64encode(
-                json.dumps(textures_payload).encode()
-            ).decode()
-            options["user_properties"] = {"textures": [textures_b64]}
-
-            with open(
-                os.path.join(minecraft_directory, "authlib-injector.jar"), "wb"
-            ) as injector_jar:
-                injector_jar.write(
-                    requests.get(
-                        "https://github.com/yushijinhun/authlib-injector/releases/download/v1.2.5/authlib-injector-1.2.5.jar"
-                    ).content
-                )
-            return True
-        else:
-            gui_messenger.warning.emit(
-                "Ошибка скина", "На данной версии нет authlib, скины не поддерживаются."
-            )
-            logging.warning(
-                f"Warning message showed in download_injector: skins not supported on {version} version (raw version is {raw_version})"
-            )
-            return False
-    else:
-        gui_messenger.warning.emit(
-            "Ошибка скина", "Отсутсвует подключение к интернету."
-        )
-        logging.warning(
-            f"Warning message showed in download_injector: skin error, no internet connection"
-        )
-        return False
-
-
-def install_version(
-    version,
-    install_type,
-    minecraft_directory,
-    progressbar,
-    download_info_label,
-    mod_loader,
-    raw_version,
-    options,
-    installed_versions_json_path,
-):
-    progress = 0
-    max_progress = 100
-    percents = 0
-    last_track_progress_call_time = time.time()
-    last_progress_info = ""
-
-    def resolve_version_name(installed_versions_json_path, check_after_download=False):
-        if not os.path.isfile(installed_versions_json_path):
-            with open(
-                installed_versions_json_path, "w", encoding="utf-8"
-            ) as installed_versions_json_file:
-                json.dump({"installed_versions": []}, installed_versions_json_file)
-        with open(
-            installed_versions_json_path, "r", encoding="utf-8"
-        ) as installed_versions_json_file:
-            installed_versions = json.load(installed_versions_json_file)
-        if (
-            f"{mod_loader}{raw_version}" in installed_versions["installed_versions"]
-            or check_after_download
-        ):
-            for v in minecraft_launcher_lib.utils.get_installed_versions(
-                minecraft_directory
-            ):
-                folder_name = v["id"]
-                if mod_loader == "vanilla" and folder_name == raw_version:
-                    return folder_name
-                elif mod_loader == "neoforge" and mod_loader in folder_name:
-                    with open(
-                        os.path.join(
-                            minecraft_directory,
-                            "versions",
-                            folder_name,
-                            f"{folder_name}.json",
-                        )
-                    ) as version_info:
-                        if json.load(version_info)["inheritsFrom"] == raw_version:
-                            return folder_name
-                elif mod_loader in folder_name and raw_version in folder_name:
-                    return folder_name
-            else:
-                return None
-        else:
-            return None
-
-    def track_progress(value, type):
-        nonlocal progress, max_progress, last_track_progress_call_time, last_progress_info, percents
-        if time.time() - last_track_progress_call_time > 1 or (
-            type == "progress_info" and value != last_progress_info
-        ):
-            if type != "progress_info":
-                if type == "progress":
-                    progress = value
-                elif type == "max":
-                    max_progress = value
-                try:
-                    percents = progress / max_progress * 100
-                except ZeroDivisionError:
-                    percents = 0
-                if percents > 100.0:
-                    percents = 100.0
-                progressbar.setValue(percents)
-                last_track_progress_call_time = time.time()
-            else:
-                last_progress_info = value
-                download_info_label.setText(value)
-
-    name_of_folder_with_version = resolve_version_name(installed_versions_json_path)
-    if name_of_folder_with_version is not None:
-        return name_of_folder_with_version, minecraft_directory, options
-    elif version != "InstalledVersionsOnly":
-        install_type(
-            version,
-            minecraft_directory,
-            callback={
-                "setProgress": lambda value: track_progress(value, "progress"),
-                "setMax": lambda value: track_progress(value, "max"),
-                "setStatus": lambda value: track_progress(value, "progress_info"),
-            },
-        )
-        name_of_folder_with_version = resolve_version_name(
-            installed_versions_json_path, True
-        )
-        if name_of_folder_with_version is not None:
-            return name_of_folder_with_version, minecraft_directory, options
-        else:
-            gui_messenger.critical.emit(
-                "Ошибка загрузки",
-                "Произошла непредвиденная ошибка во время загрузки версии.",
-            )
-            logging.error(
-                f"Error message showed in install_version: error after download {version} version (raw version is {raw_version})"
-            )
-            return None
-    else:
-        gui_messenger.critical.emit(
-            "Ошибка подключения",
-            "Вы в оффлайн-режиме. Версия отсутсвует на вашем компьютере, загрузка невозможна. Попробуйте перезапустить лаунчер.",
-        )
-        logging.error(
-            f"Error message showed in install_version: cannot download version because there is not internet connection"
-        )
-
-
-def download_sodium(sodium_path, raw_version, download_info_label):
-    url = None
-    for sodium_version in requests.get(
-        "https://api.modrinth.com/v2/project/sodium/version"
-    ).json():
-        if (
-            raw_version in sodium_version["game_versions"]
-            and "fabric" in sodium_version["loaders"]
-        ):
-            url = sodium_version["files"][0]["url"]
-            break
-    else:
-        gui_messenger.warning.emit(
-            "Запуск без sodium", "Sodium недоступен на выбранной вами версии."
-        )
-        logging.warning(
-            f"Warning message showed in download_sodium: sodium is not support on {raw_version} version"
-        )
-    if url:
-        download_info_label.setText("Загрузка Sodium...")
-        with open(sodium_path, "wb") as sodium_jar:
-            sodium_jar.write(requests.get(url).content)
-
-
-def launch(
-    mod_loader,
-    nickname,
-    raw_version,
-    java_arguments,
-    start_button,
-    progressbar,
-    download_info_label,
-    sodium,
-    ely_uuid,
-    access_token,
-    show_console,
-    minecraft_directory,
-):
-    installed_versions_json_path = os.path.join(
-        minecraft_directory, "installed_versions.json"
-    )
-    if not os.path.isdir(minecraft_directory):
-        os.mkdir(minecraft_directory)
-
-    install_type, minecraft_directory, options = prepare_installation_parameters(
-        mod_loader,
-        nickname,
-        java_arguments,
-        ely_uuid,
-        access_token,
-        minecraft_directory,
-    )
-
-    launch_info = install_version(
-        raw_version,
-        install_type,
-        minecraft_directory,
-        progressbar,
-        download_info_label,
-        mod_loader,
-        raw_version,
-        options,
-        installed_versions_json_path,
-    )
-
-    if launch_info is not None:
-        with open(
-            installed_versions_json_path, "r", encoding="utf-8"
-        ) as installed_versions_json_file:
-            installed_versions = json.load(installed_versions_json_file)
-        with open(
-            installed_versions_json_path, "w", encoding="utf-8"
-        ) as installed_versions_json_file:
-            installed_versions["installed_versions"].append(
-                f"{mod_loader}{raw_version}"
-            )
-            if mod_loader != "vanilla":
-                installed_versions["installed_versions"].append(f"vanilla{raw_version}")
-            json.dump(installed_versions, installed_versions_json_file)
-        version, minecraft_directory, options = launch_info
-        download_info_label.setText("Загрузка injector...")
-        progressbar.setValue(100)
-        options["jvmArguments"] = options["jvmArguments"].split()
-        if download_injector(
-            raw_version, minecraft_directory, nickname, options, raw_version
-        ):
-            options["jvmArguments"].append(
-                f"-javaagent:{os.path.join(minecraft_directory, 'authlib-injector.jar')}=ely.by"
-            )
-        else:
-            options.pop("executablePath")
-        sodium_path = os.path.join(minecraft_directory, "mods", "sodium.jar")
-
-        if not os.path.isdir(os.path.join(minecraft_directory, "mods")):
-            os.mkdir(os.path.join(minecraft_directory, "mods"))
-        if os.path.isfile(sodium_path):
-            os.remove(sodium_path)
-        if sodium and mod_loader == "fabric":
-            download_sodium(sodium_path, raw_version, download_info_label)
-
-        download_info_label.setText("Версия установлена, запуск...")
-        minecraft_process = subprocess.Popen(
-            minecraft_launcher_lib.command.get_minecraft_command(
-                version, minecraft_directory, options
-            ),
-            cwd=minecraft_directory,
-            **(
-                {"creationflags": subprocess.CREATE_NO_WINDOW}
-                if not show_console
-                else {}
-            ),
-        )
-        download_info_label.setText("Игра запущена")
-        start_rich_presence(
-            CLIENT_ID, start_launcher_time, minecraft_process, raw_version, mod_loader
-        )
 
 
 if __name__ == "__main__":
