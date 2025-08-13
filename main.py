@@ -15,6 +15,25 @@ import base64
 import datetime
 import logging
 
+
+def catch_errors(func):
+    def wrapper(*args, **kwargs):
+        try:
+            return func(*args, **kwargs)
+        except Exception as e:
+            logging.critical(f"Exception in {func.__name__}: {repr(e)}")
+            try:
+                gui_messenger.critical.emit(
+                    args[0], "Ошибка", f"Произошла ошибка в {func.__name__}:\n{e}"
+                )
+            except Exception as e:
+                gui_messenger.critical.emit(
+                    None, "Ошибка", f"Произошла ошибка в {func.__name__}:\n{e}"
+                )
+
+    return wrapper
+
+
 logging.basicConfig(
     level=logging.DEBUG,
     filename="FVLauncher.log",
@@ -25,109 +44,19 @@ logging.debug("Program started its work")
 
 
 class GuiMessenger(QObject):
-    warning = Signal(str, str)
-    critical = Signal(str, str)
-    info = Signal(str, str)
+    warning = Signal(QtWidgets.QWidget, str, str)
+    critical = Signal(QtWidgets.QWidget, str, str)
+    info = Signal(QtWidgets.QWidget, str, str)
 
+    @catch_errors
     def __init__(self):
         super().__init__()
-        self.warning.connect(lambda t, m: QtWidgets.QMessageBox.warning(None, t, m))
-        self.critical.connect(lambda t, m: QtWidgets.QMessageBox.critical(None, t, m))
-        self.info.connect(lambda t, m: QtWidgets.QMessageBox.information(None, t, m))
+        self.warning.connect(lambda p, t, m: QtWidgets.QMessageBox.warning(p, t, m))
+        self.critical.connect(lambda p, t, m: QtWidgets.QMessageBox.critical(p, t, m))
+        self.info.connect(lambda p, t, m: QtWidgets.QMessageBox.information(p, t, m))
 
 
-def catch_errors(func):
-    def wrapper(*args, **kwargs):
-        try:
-            return func(*args, **kwargs)
-        except Exception as e:
-            gui_messenger.critical.emit(
-                "Ошибка", f"Произошла ошибка в {func.__name__}:\n{e}"
-            )
-            logging.critical(f"Exception in {func.__name__}: {repr(e)}")
-
-    return wrapper
-
-
-def start_rich_presence(
-    CLIENT_ID,
-    start_launcher_time,
-    minecraft_process=None,
-    version=None,
-    mod_loader=None,
-):
-    try:
-        rpc = pypresence.Presence(CLIENT_ID)
-        rpc.connect()
-        if minecraft_process is None:
-            rpc.update(
-                details="В меню",
-                start=start_launcher_time,
-                large_image="minecraft_title",
-                large_text="FVLauncher",
-                buttons=[
-                    {
-                        "label": "Скачать лаунчер",
-                        "url": "https://github.com/FerrumVega/FVLauncher",
-                    }
-                ],
-            )
-        else:
-            rpc.update(
-                pid=minecraft_process.pid,
-                state=f"Играет на версии {version} {mod_loader}",
-                details="В Minecraft",
-                start=start_launcher_time,
-                large_image="minecraft_title",
-                large_text="FVLauncher",
-                small_image="grass_block",
-                small_text="В игре",
-                buttons=[
-                    {
-                        "label": "Скачать лаунчер",
-                        "url": "https://github.com/FerrumVega/FVLauncher",
-                    }
-                ],
-            )
-            minecraft_process.wait()
-            rpc.clear()
-    except Exception:
-        pass
-
-
-def showversions(self, show_old_alphas, show_old_betas, show_snapshots, show_releases):
-    self.show_old_alphas = show_old_alphas
-    self.show_old_betas = show_old_betas
-    self.show_snapshots = show_snapshots
-    self.show_releases = show_releases
-    versions_names_list = []
-    try:
-        for version in minecraft_launcher_lib.utils.get_version_list():
-            if version["type"] == "old_alpha" and show_old_alphas:
-                versions_names_list.append(version["id"])
-            elif version["type"] == "old_beta" and show_old_betas:
-                versions_names_list.append(version["id"])
-            elif version["type"] == "snapshot" and show_snapshots:
-                versions_names_list.append(version["id"])
-            elif version["type"] == "release" and show_releases:
-                versions_names_list.append(version["id"])
-        for item in minecraft_launcher_lib.utils.get_installed_versions(
-            self.minecraft_directory
-        ):
-            if (
-                not "fabric" in item["id"].lower()
-                and not "forge" in item["id"].lower()
-                and not "quilt" in item["id"].lower()
-                and not "neoforge" in item["id"].lower()
-                and not minecraft_launcher_lib.utils.is_vanilla_version(item["id"])
-            ):
-                versions_names_list.append(item["id"])
-        self.versions_combobox.clear()
-        self.versions_combobox.addItems(versions_names_list)
-    except requests.exceptions.ConnectionError:
-        pass
-
-
+@catch_errors
 def load_config():
     default_config = {
         "version": "1.16.5",
@@ -166,7 +95,8 @@ def load_config():
     return {key: parser["Settings"][key] for key in parser.options("Settings")}
 
 
-class SettingsWindow(QtWidgets.QMainWindow):
+class SettingsWindow(QtWidgets.QDialog):
+    @catch_errors
     def __init__(
         self,
         window,
@@ -190,6 +120,7 @@ class SettingsWindow(QtWidgets.QMainWindow):
         )
         self._make_ui()
 
+    @catch_errors
     def set_var(self, pos, var):
         if var == "java_arguments":
             self.window.java_arguments = pos
@@ -204,20 +135,18 @@ class SettingsWindow(QtWidgets.QMainWindow):
         elif var == "releases":
             self.window.show_releases = pos
 
+    @catch_errors
     def _make_ui(self):
-        self.settings_window = QtWidgets.QDialog()
-        self.settings_window.setWindowTitle("Настройки")
-        self.settings_window.setFixedSize(300, 500)
+        self.setWindowTitle("Настройки")
+        self.setFixedSize(300, 500)
         self.setWindowIcon(window_icon)
 
-        self.java_arguments_label = QtWidgets.QLabel(
-            self.settings_window, text="java-аргументы"
-        )
+        self.java_arguments_label = QtWidgets.QLabel(self, text="java-аргументы")
         self.java_arguments_label.move(25, 25)
         self.java_arguments_label.setFixedWidth(250)
         self.java_arguments_label.setAlignment(Qt.AlignCenter)
 
-        self.java_arguments_entry = QtWidgets.QLineEdit(self.settings_window)
+        self.java_arguments_entry = QtWidgets.QLineEdit(self)
         self.java_arguments_entry.setText(self.window.java_arguments)
         self.java_arguments_entry.textChanged.connect(
             lambda pos: self.set_var(pos, "java_arguments")
@@ -225,31 +154,29 @@ class SettingsWindow(QtWidgets.QMainWindow):
         self.java_arguments_entry.move(25, 45)
         self.java_arguments_entry.setFixedWidth(250)
 
-        self.show_console_checkbox = QtWidgets.QCheckBox(self.settings_window)
+        self.show_console_checkbox = QtWidgets.QCheckBox(self)
         self.show_console_checkbox.setChecked(self.window.show_console)
         self.show_console_checkbox.stateChanged.connect(
             lambda pos: self.set_var(pos, "show_console")
         )
         self.show_console_checkbox.setText("Запуск с консолью")
         checkbox_width = self.show_console_checkbox.sizeHint().width()
-        self.window_width = self.settings_window.width()
+        self.window_width = self.width()
         self.show_console_checkbox.move((self.window_width - checkbox_width) // 2, 85)
 
-        self.versions_filter_label = QtWidgets.QLabel(
-            self.settings_window, text="Фильтр версий"
-        )
+        self.versions_filter_label = QtWidgets.QLabel(self, text="Фильтр версий")
         self.versions_filter_label.move(25, 125)
         self.versions_filter_label.setFixedWidth(250)
         self.versions_filter_label.setAlignment(Qt.AlignCenter)
 
-        self.old_alphas_checkbox = QtWidgets.QCheckBox(self.settings_window)
+        self.old_alphas_checkbox = QtWidgets.QCheckBox(self)
         self.old_alphas_checkbox.setChecked(self.window.show_old_alphas)
         self.old_alphas_checkbox.stateChanged.connect(
             lambda pos: self.set_var(pos, "alphas")
         )
         self.old_alphas_checkbox.setText("Старые альфы")
         self.old_alphas_checkbox.stateChanged.connect(
-            lambda: showversions(
+            lambda: self.window.showversions(
                 self.window,
                 self.old_alphas_checkbox.isChecked(),
                 self.old_betas_checkbox.isChecked(),
@@ -262,14 +189,14 @@ class SettingsWindow(QtWidgets.QMainWindow):
             (self.window_width - self.checkbox_width) // 2, 145
         )
 
-        self.old_betas_checkbox = QtWidgets.QCheckBox(self.settings_window)
+        self.old_betas_checkbox = QtWidgets.QCheckBox(self)
         self.old_betas_checkbox.setChecked(self.window.show_old_betas)
         self.old_betas_checkbox.stateChanged.connect(
             lambda pos: self.set_var(pos, "betas")
         )
         self.old_betas_checkbox.setText("Старые беты")
         self.old_betas_checkbox.stateChanged.connect(
-            lambda: showversions(
+            lambda: self.window.showversions(
                 self.window,
                 self.old_alphas_checkbox.isChecked(),
                 self.old_betas_checkbox.isChecked(),
@@ -282,14 +209,14 @@ class SettingsWindow(QtWidgets.QMainWindow):
             (self.window_width - self.checkbox_width) // 2, 165
         )
 
-        self.snapshots_checkbox = QtWidgets.QCheckBox(self.settings_window)
+        self.snapshots_checkbox = QtWidgets.QCheckBox(self)
         self.snapshots_checkbox.setChecked(self.window.show_snapshots)
         self.snapshots_checkbox.stateChanged.connect(
             lambda pos: self.set_var(pos, "snapshots")
         )
         self.snapshots_checkbox.setText("Снапшоты")
         self.snapshots_checkbox.stateChanged.connect(
-            lambda: showversions(
+            lambda: self.window.showversions(
                 self.window,
                 self.old_alphas_checkbox.isChecked(),
                 self.old_betas_checkbox.isChecked(),
@@ -302,14 +229,14 @@ class SettingsWindow(QtWidgets.QMainWindow):
             (self.window_width - self.checkbox_width) // 2, 185
         )
 
-        self.releases_checkbox = QtWidgets.QCheckBox(self.settings_window)
+        self.releases_checkbox = QtWidgets.QCheckBox(self)
         self.releases_checkbox.setChecked(self.window.show_releases)
         self.releases_checkbox.stateChanged.connect(
             lambda pos: self.set_var(pos, "releases")
         )
         self.releases_checkbox.setText("Релизы")
         self.releases_checkbox.stateChanged.connect(
-            lambda: showversions(
+            lambda: self.window.showversions(
                 self.window,
                 self.old_alphas_checkbox.isChecked(),
                 self.old_betas_checkbox.isChecked(),
@@ -320,17 +247,19 @@ class SettingsWindow(QtWidgets.QMainWindow):
         self.checkbox_width = self.releases_checkbox.sizeHint().width()
         self.releases_checkbox.move((self.window_width - self.checkbox_width) // 2, 205)
 
-        self.settings_window.show()
+        self.show()
 
 
-class AccountWindow(QtWidgets.QMainWindow):
+class AccountWindow(QtWidgets.QDialog):
+    @catch_errors
     def __init__(self, window):
         super().__init__()
         self.window = window
         self._make_ui()
 
+    @catch_errors
     def _make_ui(self):
-
+        @catch_errors
         def login():
             self.data = requests.post(
                 "https://authserver.ely.by/auth/authenticate",
@@ -343,7 +272,7 @@ class AccountWindow(QtWidgets.QMainWindow):
             )
             if self.sign_status_label.text() == "Статус: вы вошли в аккаунт":
                 gui_messenger.critical.emit(
-                    "Ошибка входа", "Сначала выйдите из аккаунта"
+                    self, "Ошибка входа", "Сначала выйдите из аккаунта"
                 )
                 logging.error(
                     f"Error message showed in login: login error, sign out before login"
@@ -352,7 +281,7 @@ class AccountWindow(QtWidgets.QMainWindow):
                 self.window.access_token = self.data.json()["accessToken"]
                 self.window.ely_uuid = self.data.json()["user"]["id"]
                 gui_messenger.info.emit(
-                    "Поздравляем!", "Теперь вы будете видеть свой скин в игре."
+                    self, "Поздравляем!", "Теперь вы будете видеть свой скин в игре."
                 )
                 logging.info(
                     f"Info message showed in login: ely skin will be shown in game"
@@ -363,6 +292,7 @@ class AccountWindow(QtWidgets.QMainWindow):
                 self.window.nickname_entry.setReadOnly(True)
             else:
                 gui_messenger.critical.emit(
+                    self,
                     "Ошибка входа",
                     f"Текст ошибки: {self.data.json()['errorMessage']}",
                 )
@@ -370,6 +300,7 @@ class AccountWindow(QtWidgets.QMainWindow):
                     f"Error message showed in login: login error, {self.data.json()['errorMessage']}"
                 )
 
+        @catch_errors
         def signout():
             self.data = requests.post(
                 "https://authserver.ely.by/auth/invalidate",
@@ -381,58 +312,113 @@ class AccountWindow(QtWidgets.QMainWindow):
             self.window.access_token = ""
             self.window.ely_uuid = ""
             if self.data.status_code == 200:
-                gui_messenger.info.emit("Выход из аккаунта", "Вы вышли из аккаунта")
+                gui_messenger.info.emit(
+                    self, "Выход из аккаунта", "Вы вышли из аккаунта"
+                )
                 logging.info(f"Info message showed in signout: successfully signed out")
                 self.window.nickname_entry.setReadOnly(False)
                 self.window.sign_status = "Статус: вы вышли из аккаунта"
                 self.sign_status_label.setText(self.window.sign_status)
             else:
                 gui_messenger.critical.emit(
-                    "Ошибка выхода", self.data.json()["errorMessage"]
+                    self, "Ошибка выхода", self.data.json()["errorMessage"]
                 )
                 logging.error(
                     f"Error message showed in signout: sign out error, {self.data.json()['errorMessage']}"
                 )
 
-        self.account_window = QtWidgets.QDialog()
-        self.account_window.setWindowTitle("Настройки")
-        self.account_window.setFixedSize(300, 500)
+        self.setWindowTitle("Настройки")
+        self.setFixedSize(300, 500)
         self.setWindowIcon(window_icon)
 
-        self.ely_username = QtWidgets.QLineEdit(self.account_window)
+        self.ely_username = QtWidgets.QLineEdit(self)
         self.ely_username.setPlaceholderText("Никнейм аккаунта ely.by")
-        self.window_width = self.account_window.width()
+        self.window_width = self.width()
         self.entry_width = self.ely_username.sizeHint().width()
         self.ely_username.move((self.window_width - self.entry_width) // 2, 40)
 
-        self.ely_password = QtWidgets.QLineEdit(self.account_window)
+        self.ely_password = QtWidgets.QLineEdit(self)
         self.ely_password.setPlaceholderText("Пароль аккаунта ely.by")
         self.ely_password.setEchoMode(QtWidgets.QLineEdit.EchoMode.Password)
         self.entry_width = self.ely_password.sizeHint().width()
         self.ely_password.move((self.window_width - self.entry_width) // 2, 70)
 
-        self.login_button = QtWidgets.QPushButton(self.account_window)
+        self.login_button = QtWidgets.QPushButton(self)
         self.login_button.setText("Войти в аккаунт")
         self.login_button.clicked.connect(login)
         self.button_width = self.login_button.sizeHint().width()
         self.login_button.move((self.window_width - self.button_width) // 2, 120)
 
-        self.signout_button = QtWidgets.QPushButton(self.account_window)
+        self.signout_button = QtWidgets.QPushButton(self)
         self.signout_button.setText("Выйти из аккаунта")
         self.signout_button.clicked.connect(signout)
         self.button_width = self.signout_button.sizeHint().width()
         self.signout_button.move((self.window_width - self.button_width) // 2, 150)
 
-        self.sign_status_label = QtWidgets.QLabel(
-            self.account_window, text=self.window.sign_status
-        )
+        self.sign_status_label = QtWidgets.QLabel(self, text=self.window.sign_status)
         self.label_width = self.sign_status_label.sizeHint().width()
         self.sign_status_label.move((self.window_width - self.label_width) // 2, 180)
 
-        self.account_window.show()
+        self.show()
 
 
 class MainWindow(QtWidgets.QMainWindow):
+    @catch_errors
+    def check_java(self):
+        self.java_path = minecraft_launcher_lib.utils.get_java_executable()
+        if self.java_path == "java" or self.java_path == "javaw":
+            gui_messenger.critical.emit(
+                self,
+                "Java не найдена",
+                "На вашем компьютере отсутствует java, загрузите её с github лаунчера.",
+            )
+            logging.error(f"Error message showed while checking java: java not found")
+            os._exit(1)
+
+    @catch_errors
+    def start_rich_presence(
+        self,
+        minecraft_process=False,
+    ):
+        try:
+            rpc = pypresence.Presence(CLIENT_ID)
+            rpc.connect()
+            if minecraft_process == False:
+                rpc.update(
+                    details="В меню",
+                    start=start_launcher_time,
+                    large_image="minecraft_title",
+                    large_text="FVLauncher",
+                    buttons=[
+                        {
+                            "label": "Скачать лаунчер",
+                            "url": "https://github.com/FerrumVega/FVLauncher",
+                        }
+                    ],
+                )
+            else:
+                rpc.update(
+                    pid=minecraft_process.pid,
+                    state=(f"Играет на версии {self.raw_version}"),
+                    details="В Minecraft",
+                    start=start_launcher_time,
+                    large_image="minecraft_title",
+                    large_text="FVLauncher",
+                    small_image="grass_block",
+                    small_text="В игре",
+                    buttons=[
+                        {
+                            "label": "Скачать лаунчер",
+                            "url": "https://github.com/FerrumVega/FVLauncher",
+                        }
+                    ],
+                )
+                minecraft_process.wait()
+                rpc.clear()
+        except Exception:
+            pass
+
+    @catch_errors
     def __init__(
         self,
         chosen_version,
@@ -462,13 +448,52 @@ class MainWindow(QtWidgets.QMainWindow):
         self.show_releases_position = show_releases_position
         super().__init__()
         self.client_token = str(uuid.uuid5(uuid.NAMESPACE_DNS, str(uuid.getnode())))
+        self.start_rich_presence()
+        self.check_java()
         self._make_ui()
 
+    @catch_errors
     def closeEvent(self, event):
         self.save_config()
         logging.debug("Launcher was closed")
         return super().closeEvent(event)
 
+    @catch_errors
+    def showversions(
+        self, window, show_old_alphas, show_old_betas, show_snapshots, show_releases
+    ):
+        window.show_old_alphas = show_old_alphas
+        window.show_old_betas = show_old_betas
+        window.show_snapshots = show_snapshots
+        window.show_releases = show_releases
+        versions_names_list = []
+        try:
+            for version in minecraft_launcher_lib.utils.get_version_list():
+                if version["type"] == "old_alpha" and show_old_alphas:
+                    versions_names_list.append(version["id"])
+                elif version["type"] == "old_beta" and show_old_betas:
+                    versions_names_list.append(version["id"])
+                elif version["type"] == "snapshot" and show_snapshots:
+                    versions_names_list.append(version["id"])
+                elif version["type"] == "release" and show_releases:
+                    versions_names_list.append(version["id"])
+            for item in minecraft_launcher_lib.utils.get_installed_versions(
+                window.minecraft_directory
+            ):
+                if (
+                    not "fabric" in item["id"].lower()
+                    and not "forge" in item["id"].lower()
+                    and not "quilt" in item["id"].lower()
+                    and not "neoforge" in item["id"].lower()
+                    and not minecraft_launcher_lib.utils.is_vanilla_version(item["id"])
+                ):
+                    versions_names_list.append(item["id"])
+            window.versions_combobox.clear()
+            window.versions_combobox.addItems(versions_names_list)
+        except requests.exceptions.ConnectionError:
+            pass
+
+    @catch_errors
     def prepare_installation_parameters(self):
         if self.mod_loader != "vanilla":
             install_type = minecraft_launcher_lib.mod_loader.get_mod_loader(
@@ -481,10 +506,11 @@ class MainWindow(QtWidgets.QMainWindow):
             "uuid": self.ely_uuid,
             "token": self.access_token,
             "jvmArguments": self.java_arguments,
-            "executablePath": java_path,
+            "executablePath": self.java_path,
         }
         return install_type, options
 
+    @catch_errors
     def download_injector(self, options, version):
         if self.mod_loader_info != "InstalledVersionsOnly":
             json_path = os.path.join(
@@ -538,6 +564,7 @@ class MainWindow(QtWidgets.QMainWindow):
                 return True
             else:
                 gui_messenger.warning.emit(
+                    self,
                     "Ошибка скина",
                     "На данной версии нет authlib, скины не поддерживаются.",
                 )
@@ -547,13 +574,14 @@ class MainWindow(QtWidgets.QMainWindow):
                 return False
         else:
             gui_messenger.warning.emit(
-                "Ошибка скина", "Отсутсвует подключение к интернету."
+                self, "Ошибка скина", "Отсутсвует подключение к интернету."
             )
             logging.warning(
                 f"Warning message showed in download_injector: skin error, no internet connection"
             )
             return False
 
+    @catch_errors
     def install_version(
         self,
         install_type,
@@ -566,6 +594,7 @@ class MainWindow(QtWidgets.QMainWindow):
         last_track_progress_call_time = time.time()
         last_progress_info = ""
 
+        @catch_errors
         def resolve_version_name(
             installed_versions_json_path, check_after_download=False
         ):
@@ -615,6 +644,7 @@ class MainWindow(QtWidgets.QMainWindow):
             else:
                 return None
 
+        @catch_errors
         def track_progress(value, type):
             nonlocal progress, max_progress, last_track_progress_call_time, last_progress_info, percents
             if time.time() - last_track_progress_call_time > 1 or (
@@ -642,7 +672,7 @@ class MainWindow(QtWidgets.QMainWindow):
             return name_of_folder_with_version, self.minecraft_directory, options
         elif self.mod_loader_info != "InstalledVersionsOnly":
             install_type(
-                self.raw_versionversion,
+                self.raw_version,
                 self.minecraft_directory,
                 callback={
                     "setProgress": lambda value: track_progress(value, "progress"),
@@ -657,6 +687,7 @@ class MainWindow(QtWidgets.QMainWindow):
                 return name_of_folder_with_version, self.minecraft_directory, options
             else:
                 gui_messenger.critical.emit(
+                    self,
                     "Ошибка загрузки",
                     "Произошла непредвиденная ошибка во время загрузки версии.",
                 )
@@ -666,6 +697,7 @@ class MainWindow(QtWidgets.QMainWindow):
                 return None
         else:
             gui_messenger.critical.emit(
+                self,
                 "Ошибка подключения",
                 "Вы в оффлайн-режиме. Версия отсутсвует на вашем компьютере, загрузка невозможна. Попробуйте перезапустить лаунчер.",
             )
@@ -673,6 +705,7 @@ class MainWindow(QtWidgets.QMainWindow):
                 f"Error message showed in install_version: cannot download version because there is not internet connection"
             )
 
+    @catch_errors
     def download_sodium(self, sodium_path):
         url = None
         for sodium_version in requests.get(
@@ -686,7 +719,7 @@ class MainWindow(QtWidgets.QMainWindow):
                 break
         else:
             gui_messenger.warning.emit(
-                "Запуск без sodium", "Sodium недоступен на выбранной вами версии."
+                self, "Запуск без sodium", "Sodium недоступен на выбранной вами версии."
             )
             logging.warning(
                 f"Warning message showed in download_sodium: sodium is not support on {self.raw_version} version"
@@ -697,6 +730,7 @@ class MainWindow(QtWidgets.QMainWindow):
             with open(sodium_path, "wb") as sodium_jar:
                 sodium_jar.write(requests.get(url).content)
 
+    @catch_errors
     def launch(self):
         installed_versions_json_path = os.path.join(
             self.minecraft_directory, "installed_versions.json"
@@ -763,14 +797,9 @@ class MainWindow(QtWidgets.QMainWindow):
             )
             self.download_info_label.setText("Игра запущена")
             logging.debug(f"Minecraft process started on {version} version")
-            start_rich_presence(
-                CLIENT_ID,
-                start_launcher_time,
-                minecraft_process,
-                self.raw_version,
-                self.mod_loader,
-            )
+            # self.start_rich_presence(minecraft_process)
 
+    @catch_errors
     def v1_6_or_higher(self, raw_version):
         for version in minecraft_launcher_lib.utils.get_version_list():
             if raw_version == version["id"]:
@@ -778,6 +807,7 @@ class MainWindow(QtWidgets.QMainWindow):
                     2013, 6, 25, 13, 8, 56, tzinfo=datetime.timezone.utc
                 )
 
+    @catch_errors
     def mod_loader_is_supported(self, raw_version, mod_loader):
         try:
             if mod_loader != "vanilla":
@@ -795,6 +825,7 @@ class MainWindow(QtWidgets.QMainWindow):
         except requests.exceptions.ConnectionError:
             return "InstalledVersionsOnly"
 
+    @catch_errors
     def save_config(self):
         settings = {
             "version": self.raw_version,
@@ -819,12 +850,14 @@ class MainWindow(QtWidgets.QMainWindow):
         with open(config_path, "w", encoding="utf-8") as config_file:
             parser.write(config_file)
 
+    @catch_errors
     def block_sodium_checkbox(self, *args):
         if self.loaders_combobox.currentText() == "fabric":
             self.sodium_checkbox.setDisabled(False)
         else:
             self.sodium_checkbox.setDisabled(True)
 
+    @catch_errors
     def on_start_button(self):
         self.mod_loader_info = self.mod_loader_is_supported(
             self.raw_version, self.mod_loader
@@ -839,12 +872,15 @@ class MainWindow(QtWidgets.QMainWindow):
             minecraft_thread.start()
         else:
             gui_messenger.critical.emit(
-                "Ошибка", "Для данной версии нет выбранного вами загрузчика модов."
+                self,
+                "Ошибка",
+                "Для данной версии нет выбранного вами загрузчика модов.",
             )
             logging.error(
                 f"Error message showed in on_start_button: mod loader {self.mod_loader} is not supported on the {self.raw_version} version"
             )
 
+    @catch_errors
     def set_var(self, pos, var):
         if var == "sodium":
             self.sodium = pos
@@ -855,6 +891,7 @@ class MainWindow(QtWidgets.QMainWindow):
         elif var == "nickname":
             self.nickname = pos
 
+    @catch_errors
     def auto_login(self):
         try:
             if self.saved_ely_uuid and self.saved_access_token:
@@ -897,6 +934,7 @@ class MainWindow(QtWidgets.QMainWindow):
             self.sign_status = "Статус: вы не вошли в аккаунт"
             return self.saved_access_token, self.saved_ely_uuid
 
+    @catch_errors
     def _make_ui(self):
         # self.setStyleSheet(
         #     f"""
@@ -933,7 +971,7 @@ class MainWindow(QtWidgets.QMainWindow):
         self.versions_combobox = QtWidgets.QComboBox(self)
         self.versions_combobox.move(20, 20)
         self.versions_combobox.setFixedWidth(120)
-        showversions(
+        self.showversions(
             self,
             self.show_old_alphas,
             self.show_old_betas,
@@ -1025,15 +1063,6 @@ if __name__ == "__main__":
     app.setStyle(QtWidgets.QStyleFactory.create("windows11"))
     gui_messenger = GuiMessenger()
 
-    java_path = minecraft_launcher_lib.utils.get_java_executable()
-    if java_path == "java" or java_path == "javaw":
-        gui_messenger.critical.emit(
-            "Java не найдена",
-            "На вашем компьютере отсутствует java, загрузите её с github лаунчера.",
-        )
-        logging.error(f"Error message showed while checking java: java not found")
-        os._exit(1)
-
     CLIENT_ID = "1399428342117175497"
     start_launcher_time = int(time.time())
     window_icon = QtGui.QIcon(
@@ -1044,7 +1073,6 @@ if __name__ == "__main__":
             )
         )
     )
-    start_rich_presence(CLIENT_ID, start_launcher_time)
     config = load_config()
     window = MainWindow(
         config["version"],
