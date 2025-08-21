@@ -1,0 +1,13 @@
+проверка хешей инжектора и содиума перед скачиванием
+optifine instead of sodium
+injector and sodium only if internet
+forge на старых версиях
+система аккаунтов
+скины на старых версиях
+изменение конфига
+блок кнопки старта
+остается процесс
+только стабильный фордж
+
+QWidget::repaint: Recursive repaint detected
+QBackingStore::endPaint() called with active painter; did you forget to destroy it or call QPainter::end() on it?
