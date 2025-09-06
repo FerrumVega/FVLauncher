@@ -1,11 +1,11 @@
 import minecraft_launcher_lib
 from PySide6 import QtWidgets, QtGui
 from PySide6.QtCore import Qt, QObject, Signal
+import threading
 import subprocess
 import os
 import sys
 import requests
-import threading
 import configparser
 import uuid
 import json
@@ -14,6 +14,7 @@ import time
 import base64
 import datetime
 import logging
+import hashlib
 
 
 def catch_errors(func):
@@ -30,6 +31,10 @@ def catch_errors(func):
                 gui_messenger.critical.emit(
                     None, "Ошибка", f"Произошла ошибка в {func.__name__}:\n{e}"
                 )
+            if args:
+                self = args[0]
+                if hasattr(self, "start_button"):
+                    self.set_start_button_status.emit(True)
 
     return wrapper
 
@@ -37,7 +42,7 @@ def catch_errors(func):
 logging.basicConfig(
     level=logging.DEBUG,
     filename="FVLauncher.log",
-    filemode="a",
+    filemode="w",
     format="%(asctime)s %(levelname)s %(message)s",
 )
 logging.debug("Program started its work")
@@ -363,6 +368,10 @@ class AccountWindow(QtWidgets.QDialog):
 
 
 class MainWindow(QtWidgets.QMainWindow):
+    set_progressbar = Signal(int)
+    set_download_info = Signal(str)
+    set_start_button_status = Signal(bool)
+
     @catch_errors
     def check_java(self):
         self.java_path = minecraft_launcher_lib.utils.get_java_executable()
@@ -378,13 +387,12 @@ class MainWindow(QtWidgets.QMainWindow):
     @catch_errors
     def start_rich_presence(
         self,
-        minecraft_process=False,
+        minecraft=False,
+        minecraft_process=None,
     ):
         try:
-            rpc = pypresence.Presence(CLIENT_ID)
-            rpc.connect()
-            if minecraft_process == False:
-                rpc.update(
+            if not minecraft:
+                self.rpc.update(
                     details="В меню",
                     start=start_launcher_time,
                     large_image="minecraft_title",
@@ -397,7 +405,7 @@ class MainWindow(QtWidgets.QMainWindow):
                     ],
                 )
             else:
-                rpc.update(
+                self.rpc.update(
                     pid=minecraft_process.pid,
                     state=(f"Играет на версии {self.raw_version}"),
                     details="В Minecraft",
@@ -414,8 +422,8 @@ class MainWindow(QtWidgets.QMainWindow):
                     ],
                 )
                 minecraft_process.wait()
-                rpc.clear()
-        except Exception:
+                self.start_rich_presence()
+        except:
             pass
 
     @catch_errors
@@ -448,6 +456,8 @@ class MainWindow(QtWidgets.QMainWindow):
         self.show_releases_position = show_releases_position
         super().__init__()
         self.client_token = str(uuid.uuid5(uuid.NAMESPACE_DNS, str(uuid.getnode())))
+        self.rpc = pypresence.Presence(CLIENT_ID)
+        self.rpc.connect()
         self.start_rich_presence()
         self.check_java()
         self._make_ui()
@@ -512,6 +522,15 @@ class MainWindow(QtWidgets.QMainWindow):
 
     @catch_errors
     def download_injector(self, options, version):
+        with open(
+            os.path.join(self.minecraft_directory, "authlib-injector.jar"), "rb"
+        ) as injector_jar:
+            if (
+                hashlib.md5(injector_jar.read()).hexdigest()
+                == "c60d3899b711537e10be33c680ebd8ae"
+            ):
+                logging.debug("Injector alredy installed")
+                return True
         if self.mod_loader_info != "InstalledVersionsOnly":
             json_path = os.path.join(
                 self.minecraft_directory,
@@ -661,11 +680,11 @@ class MainWindow(QtWidgets.QMainWindow):
                         percents = 0
                     if percents > 100.0:
                         percents = 100.0
-                    self.progressbar.setValue(percents)
+                    self.set_progressbar.emit(percents)
                     last_track_progress_call_time = time.time()
                 else:
                     last_progress_info = value
-                    self.download_info_label.setText(value)
+                    self.set_download_info.emit(value)
 
         name_of_folder_with_version = resolve_version_name(installed_versions_json_path)
         if name_of_folder_with_version is not None:
@@ -691,6 +710,7 @@ class MainWindow(QtWidgets.QMainWindow):
                     "Ошибка загрузки",
                     "Произошла непредвиденная ошибка во время загрузки версии.",
                 )
+                self.set_start_button_status.emit(True)
                 logging.error(
                     f"Error message showed in install_version: error after download {self.raw_version} version"
                 )
@@ -701,34 +721,45 @@ class MainWindow(QtWidgets.QMainWindow):
                 "Ошибка подключения",
                 "Вы в оффлайн-режиме. Версия отсутсвует на вашем компьютере, загрузка невозможна. Попробуйте перезапустить лаунчер.",
             )
+            self.set_start_button_status.emit(True)
             logging.error(
                 f"Error message showed in install_version: cannot download version because there is not internet connection"
             )
 
     @catch_errors
     def download_sodium(self, sodium_path):
-        url = None
-        for sodium_version in requests.get(
-            "https://api.modrinth.com/v2/project/sodium/version"
-        ).json():
-            if (
-                self.raw_version in sodium_version["game_versions"]
-                and "fabric" in sodium_version["loaders"]
-            ):
-                url = sodium_version["files"][0]["url"]
-                break
+        if self.mod_loader_info != "InstalledVersionsOnly":
+            url = None
+            for sodium_version in requests.get(
+                "https://api.modrinth.com/v2/project/sodium/version"
+            ).json():
+                if (
+                    self.raw_version in sodium_version["game_versions"]
+                    and "fabric" in sodium_version["loaders"]
+                ):
+                    url = sodium_version["files"][0]["url"]
+                    break
+            else:
+                gui_messenger.warning.emit(
+                    self,
+                    "Запуск без sodium",
+                    "Sodium недоступен на выбранной вами версии.",
+                )
+                logging.warning(
+                    f"Warning message showed in download_sodium: sodium is not support on {self.raw_version} version"
+                )
+            if url:
+                self.set_download_info.emit("Загрузка Sodium...")
+                logging.debug("Installing sodium in download_sodium")
+                with open(sodium_path, "wb") as sodium_jar:
+                    sodium_jar.write(requests.get(url).content)
         else:
             gui_messenger.warning.emit(
-                self, "Запуск без sodium", "Sodium недоступен на выбранной вами версии."
+                self, "Ошибка sodium", "Отсутсвует подключение к интернету."
             )
             logging.warning(
-                f"Warning message showed in download_sodium: sodium is not support on {self.raw_version} version"
+                f"Warning message showed in download_sodium: sodium error, no internet connection"
             )
-        if url:
-            self.download_info_label.setText("Загрузка Sodium...")
-            logging.debug("Installing sodium in download_sodium")
-            with open(sodium_path, "wb") as sodium_jar:
-                sodium_jar.write(requests.get(url).content)
 
     @catch_errors
     def launch(self):
@@ -763,9 +794,9 @@ class MainWindow(QtWidgets.QMainWindow):
                     )
                 json.dump(installed_versions, installed_versions_json_file)
             version, self.minecraft_directory, options = launch_info
-            self.download_info_label.setText("Загрузка injector...")
+            self.set_download_info.emit("Загрузка injector...")
             logging.debug("Installing injector in launch")
-            self.progressbar.setValue(100)
+            self.set_progressbar.emit(100)
             options["jvmArguments"] = options["jvmArguments"].split()
             if self.download_injector(options, version):
                 options["jvmArguments"].append(
@@ -781,8 +812,6 @@ class MainWindow(QtWidgets.QMainWindow):
                 os.remove(sodium_path)
             if self.sodium and self.mod_loader == "fabric":
                 self.download_sodium(sodium_path)
-
-            self.download_info_label.setText("Версия установлена, запуск...")
             logging.debug(f"Launching {version} version")
             minecraft_process = subprocess.Popen(
                 minecraft_launcher_lib.command.get_minecraft_command(
@@ -795,9 +824,10 @@ class MainWindow(QtWidgets.QMainWindow):
                     else {}
                 ),
             )
-            self.download_info_label.setText("Игра запущена")
+            self.set_download_info.emit("Игра запущена")
             logging.debug(f"Minecraft process started on {version} version")
-            # self.start_rich_presence(minecraft_process)
+            self.set_start_button_status.emit(True)
+            self.start_rich_presence(True, minecraft_process)
 
     @catch_errors
     def v1_6_or_higher(self, raw_version):
@@ -811,7 +841,6 @@ class MainWindow(QtWidgets.QMainWindow):
     def mod_loader_is_supported(self, raw_version, mod_loader):
         try:
             if mod_loader != "vanilla":
-                minecraft_launcher_lib.mod_loader
                 if minecraft_launcher_lib.mod_loader.get_mod_loader(
                     mod_loader
                 ).is_minecraft_version_supported(raw_version) and self.v1_6_or_higher(
@@ -859,23 +888,19 @@ class MainWindow(QtWidgets.QMainWindow):
 
     @catch_errors
     def on_start_button(self):
+        self.set_start_button_status.emit(False)
         self.mod_loader_info = self.mod_loader_is_supported(
             self.raw_version, self.mod_loader
         )
         if self.mod_loader_info:
-            self.download_info_label.move(50, 450)
-            self.download_info_label.setAlignment(Qt.AlignCenter)
-            minecraft_thread = threading.Thread(
-                target=self.launch,
-                daemon=True,
-            )
-            minecraft_thread.start()
+            threading.Thread(target=self.launch, daemon=True).start()
         else:
             gui_messenger.critical.emit(
                 self,
                 "Ошибка",
                 "Для данной версии нет выбранного вами загрузчика модов.",
             )
+            self.set_start_button_status.emit(True)
             logging.error(
                 f"Error message showed in on_start_button: mod loader {self.mod_loader} is not supported on the {self.raw_version} version"
             )
@@ -1022,13 +1047,18 @@ class MainWindow(QtWidgets.QMainWindow):
         self.start_button.setFixedWidth(260)
         self.start_button.clicked.connect(self.on_start_button)
         self.start_button.move(20, 140)
+        self.set_start_button_status.connect(self.start_button.setEnabled)
 
         self.progressbar = QtWidgets.QProgressBar(self, textVisible=False)
         self.progressbar.setFixedWidth(260)
         self.progressbar.move(20, 430)
+        self.set_progressbar.connect(self.progressbar.setValue)
 
         self.download_info_label = QtWidgets.QLabel(self)
         self.download_info_label.setFixedWidth(200)
+        self.download_info_label.move(50, 450)
+        self.download_info_label.setAlignment(Qt.AlignCenter)
+        self.set_download_info.connect(self.download_info_label.setText)
 
         self.settings_button = QtWidgets.QPushButton(self)
         self.settings_button.setText("⚙️")
