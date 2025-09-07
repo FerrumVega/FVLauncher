@@ -532,15 +532,18 @@ class MainWindow(QtWidgets.QMainWindow):
 
     @catch_errors
     def download_injector(self, options, version):
-        with open(
-            os.path.join(self.minecraft_directory, "authlib-injector.jar"), "rb"
-        ) as injector_jar:
-            if (
-                hashlib.md5(injector_jar.read()).hexdigest()
-                == "c60d3899b711537e10be33c680ebd8ae"
-            ):
-                logging.debug("Injector alredy installed")
-                return True
+        try:
+            with open(
+                os.path.join(self.minecraft_directory, "authlib-injector.jar"), "rb"
+            ) as injector_jar:
+                if (
+                    hashlib.md5(injector_jar.read()).hexdigest()
+                    == "c60d3899b711537e10be33c680ebd8ae"
+                ):
+                    logging.debug("Injector alredy installed")
+                    return True
+        except FileNotFoundError:
+            pass
         if self.mod_loader_info != "InstalledVersionsOnly":
             json_path = os.path.join(
                 self.minecraft_directory,
