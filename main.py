@@ -798,10 +798,18 @@ class MainWindow(QtWidgets.QMainWindow):
             with open(
                 installed_versions_json_path, "w", encoding="utf-8"
             ) as installed_versions_json_file:
-                installed_versions["installed_versions"].append(
-                    f"{self.mod_loader}{self.raw_version}"
-                )
-                if self.mod_loader != "vanilla":
+                if (
+                    not f"{self.mod_loader}{self.raw_version}"
+                    in installed_versions["installed_versions"]
+                ):
+                    installed_versions["installed_versions"].append(
+                        f"{self.mod_loader}{self.raw_version}"
+                    )
+                if (
+                    self.mod_loader != "vanilla"
+                    and not f"vanilla{self.raw_version}"
+                    in installed_versions["installed_versions"]
+                ):
                     installed_versions["installed_versions"].append(
                         f"vanilla{self.raw_version}"
                     )
