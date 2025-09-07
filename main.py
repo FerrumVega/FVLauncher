@@ -27,7 +27,7 @@ def catch_errors(func):
                 gui_messenger.critical.emit(
                     args[0], "Ошибка", f"Произошла ошибка в {func.__name__}:\n{e}"
                 )
-            except Exception as e:
+            except:
                 gui_messenger.critical.emit(
                     None, "Ошибка", f"Произошла ошибка в {func.__name__}:\n{e}"
                 )
@@ -382,7 +382,9 @@ class MainWindow(QtWidgets.QMainWindow):
                 "На вашем компьютере отсутствует java, загрузите её с github лаунчера.",
             )
             logging.error(f"Error message showed while checking java: java not found")
-            os._exit(1)
+            return False
+        else:
+            return True
 
     @catch_errors
     def start_rich_presence(
@@ -457,14 +459,22 @@ class MainWindow(QtWidgets.QMainWindow):
         super().__init__()
         self.client_token = str(uuid.uuid5(uuid.NAMESPACE_DNS, str(uuid.getnode())))
         self.rpc = pypresence.Presence(CLIENT_ID)
-        self.rpc.connect()
+        try:
+            self.rpc.connect()
+        except:
+            pass
         self.start_rich_presence()
-        self.check_java()
-        self._make_ui()
+        if self.check_java():
+            self.save_config_on_close = True
+            self._make_ui()
+        else:
+            self.save_config_on_close = False
+            self.close()
 
     @catch_errors
     def closeEvent(self, event):
-        self.save_config()
+        if self.save_config_on_close:
+            self.save_config()
         logging.debug("Launcher was closed")
         return super().closeEvent(event)
 
