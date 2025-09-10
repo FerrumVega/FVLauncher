@@ -15,6 +15,7 @@ import base64
 import datetime
 import logging
 import hashlib
+import optipy
 
 
 def catch_errors(func):
@@ -65,17 +66,17 @@ class GuiMessenger(QObject):
 def load_config():
     default_config = {
         "version": "1.16.5",
-        "mod_loader": "fabric",
-        "nickname": "",
+        "mod_loader": "forge",
+        "nickname": "Player",
         "java_arguments": "",
-        "sodium": "0",
+        "optifine": "2",
         "access_token": "",
         "ely_uuid": "",
-        "show_console": "False",
-        "show_old_alphas": "False",
-        "show_old_betas": "False",
-        "show_snapshots": "False",
-        "show_releases": "True",
+        "show_console": "0",
+        "show_old_alphas": "0",
+        "show_old_betas": "0",
+        "show_snapshots": "0",
+        "show_releases": "2",
     }
 
     config_path = "FVLauncher.ini"
@@ -435,7 +436,7 @@ class MainWindow(QtWidgets.QMainWindow):
         chosen_mod_loader,
         chosen_nickname,
         chosen_java_arguments,
-        sodium_position,
+        optifine_position,
         saved_access_token,
         saved_ely_uuid,
         show_console_position,
@@ -448,7 +449,7 @@ class MainWindow(QtWidgets.QMainWindow):
         self.chosen_mod_loader = chosen_mod_loader
         self.chosen_nickname = chosen_nickname
         self.chosen_java_arguments = chosen_java_arguments
-        self.sodium_position = sodium_position
+        self.optifine_position = optifine_position
         self.saved_access_token = saved_access_token
         self.saved_ely_uuid = saved_ely_uuid
         self.show_console_position = show_console_position
@@ -740,38 +741,31 @@ class MainWindow(QtWidgets.QMainWindow):
             )
 
     @catch_errors
-    def download_sodium(self, sodium_path):
+    def download_optifine(self, optifine_path):
         if self.mod_loader_info != "InstalledVersionsOnly":
             url = None
-            for sodium_version in requests.get(
-                "https://api.modrinth.com/v2/project/sodium/version"
-            ).json():
-                if (
-                    self.raw_version in sodium_version["game_versions"]
-                    and "fabric" in sodium_version["loaders"]
-                ):
-                    url = sodium_version["files"][0]["url"]
-                    break
+            optifine_info = optipy.getVersion(self.raw_version)
+            if optifine_info is not None:
+                url = optifine_info[self.raw_version][0]["url"]
+                self.set_download_info.emit("Загрузка Optifine...")
+                logging.debug("Installing optifine in download_optifine")
+                with open(optifine_path, "wb") as optifine_jar:
+                    optifine_jar.write(requests.get(url).content)
             else:
                 gui_messenger.warning.emit(
                     self,
-                    "Запуск без sodium",
-                    "Sodium недоступен на выбранной вами версии.",
+                    "Запуск без optifine",
+                    "Optifine недоступен на выбранной вами версии.",
                 )
                 logging.warning(
-                    f"Warning message showed in download_sodium: sodium is not support on {self.raw_version} version"
+                    f"Warning message showed in download_optifine: optifine is not support on {self.raw_version} version"
                 )
-            if url:
-                self.set_download_info.emit("Загрузка Sodium...")
-                logging.debug("Installing sodium in download_sodium")
-                with open(sodium_path, "wb") as sodium_jar:
-                    sodium_jar.write(requests.get(url).content)
         else:
             gui_messenger.warning.emit(
-                self, "Ошибка sodium", "Отсутсвует подключение к интернету."
+                self, "Ошибка optifine", "Отсутсвует подключение к интернету."
             )
             logging.warning(
-                f"Warning message showed in download_sodium: sodium error, no internet connection"
+                f"Warning message showed in download_optifine: optifine error, no internet connection"
             )
 
     @catch_errors
@@ -825,14 +819,17 @@ class MainWindow(QtWidgets.QMainWindow):
                 )
             else:
                 options.pop("executablePath")
-            sodium_path = os.path.join(self.minecraft_directory, "mods", "sodium.jar")
+
+            optifine_path = os.path.join(
+                self.minecraft_directory, "mods", "optifine.jar"
+            )
 
             if not os.path.isdir(os.path.join(self.minecraft_directory, "mods")):
                 os.mkdir(os.path.join(self.minecraft_directory, "mods"))
-            if os.path.isfile(sodium_path):
-                os.remove(sodium_path)
-            if self.sodium and self.mod_loader == "fabric":
-                self.download_sodium(sodium_path)
+            if os.path.isfile(optifine_path):
+                os.remove(optifine_path)
+            if self.optifine and self.mod_loader == "forge":
+                self.download_optifine(optifine_path)
             logging.debug(f"Launching {version} version")
             minecraft_process = subprocess.Popen(
                 minecraft_launcher_lib.command.get_minecraft_command(
@@ -882,7 +879,7 @@ class MainWindow(QtWidgets.QMainWindow):
             "mod_loader": self.mod_loader,
             "nickname": self.nickname,
             "java_arguments": self.java_arguments,
-            "sodium": self.sodium,
+            "optifine": self.optifine,
             "access_token": self.access_token,
             "ely_uuid": self.ely_uuid,
             "show_console": self.show_console,
@@ -901,11 +898,11 @@ class MainWindow(QtWidgets.QMainWindow):
             parser.write(config_file)
 
     @catch_errors
-    def block_sodium_checkbox(self, *args):
-        if self.loaders_combobox.currentText() == "fabric":
-            self.sodium_checkbox.setDisabled(False)
+    def block_optifine_checkbox(self, *args):
+        if self.loaders_combobox.currentText() == "forge":
+            self.optifine_checkbox.setDisabled(False)
         else:
-            self.sodium_checkbox.setDisabled(True)
+            self.optifine_checkbox.setDisabled(True)
 
     @catch_errors
     def on_start_button(self):
@@ -928,8 +925,8 @@ class MainWindow(QtWidgets.QMainWindow):
 
     @catch_errors
     def set_var(self, pos, var):
-        if var == "sodium":
-            self.sodium = pos
+        if var == "optifine":
+            self.optifine = pos
         elif var == "mod_loader":
             self.mod_loader = pos
         elif var == "version":
@@ -992,6 +989,7 @@ class MainWindow(QtWidgets.QMainWindow):
         #     }}
         # """
         # )
+
         self.setWindowTitle("FVLauncher")
         self.sign_status = ""
         self.setWindowIcon(window_icon)
@@ -1003,16 +1001,16 @@ class MainWindow(QtWidgets.QMainWindow):
 
         self.raw_version = self.chosen_version
         self.mod_loader = self.chosen_mod_loader
-        self.sodium = self.sodium_position == "True"
+        self.optifine = int(self.optifine_position)
         self.nickname = self.chosen_nickname
 
         self.java_arguments = self.chosen_java_arguments
-        self.show_console = self.show_console_position == "True"
+        self.show_console = int(self.show_console_position)
 
-        self.show_old_alphas = self.show_old_alphas_position == "True"
-        self.show_old_betas = self.show_old_betas_position == "True"
-        self.show_snapshots = self.show_snapshots_position == "True"
-        self.show_releases = self.show_releases_position == "True"
+        self.show_old_alphas = int(self.show_old_alphas_position)
+        self.show_old_betas = int(self.show_old_betas_position)
+        self.show_snapshots = int(self.show_snapshots_position)
+        self.show_releases = int(self.show_releases_position)
 
         self.versions_combobox = QtWidgets.QComboBox(self)
         self.versions_combobox.move(20, 20)
@@ -1040,13 +1038,13 @@ class MainWindow(QtWidgets.QMainWindow):
             lambda pos: self.set_var(pos, "nickname")
         )
 
-        self.sodium_checkbox = QtWidgets.QCheckBox(self)
-        self.sodium_checkbox.setText("Sodium")
-        self.sodium_checkbox.move(20, 100)
-        self.sodium_checkbox.setFixedWidth(260)
-        self.sodium_checkbox.setChecked(self.sodium)
-        self.sodium_checkbox.stateChanged.connect(
-            lambda pos: self.set_var(pos, "sodium")
+        self.optifine_checkbox = QtWidgets.QCheckBox(self)
+        self.optifine_checkbox.setText("Optifine")
+        self.optifine_checkbox.move(20, 100)
+        self.optifine_checkbox.setFixedWidth(260)
+        self.optifine_checkbox.setChecked(self.optifine)
+        self.optifine_checkbox.stateChanged.connect(
+            lambda pos: self.set_var(pos, "optifine")
         )
 
         mod_loaders = ["fabric", "forge", "quilt", "neoforge", "vanilla"]
@@ -1055,8 +1053,8 @@ class MainWindow(QtWidgets.QMainWindow):
         self.loaders_combobox.move(160, 20)
         self.loaders_combobox.setFixedWidth(120)
         self.loaders_combobox.setCurrentText(self.chosen_mod_loader)
-        self.block_sodium_checkbox()
-        self.loaders_combobox.currentIndexChanged.connect(self.block_sodium_checkbox)
+        self.block_optifine_checkbox()
+        self.loaders_combobox.currentIndexChanged.connect(self.block_optifine_checkbox)
         self.loaders_combobox.currentTextChanged.connect(
             lambda pos: self.set_var(pos, "mod_loader")
         )
@@ -1130,7 +1128,7 @@ if __name__ == "__main__":
         config["mod_loader"],
         config["nickname"],
         config["java_arguments"],
-        config["sodium"],
+        config["optifine"],
         config["access_token"],
         config["ely_uuid"],
         config["show_console"],
@@ -1139,4 +1137,3 @@ if __name__ == "__main__":
         config["show_snapshots"],
         config["show_releases"],
     )
-    app.aboutToQuit.connect(window.save_config)
