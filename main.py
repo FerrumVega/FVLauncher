@@ -1110,7 +1110,7 @@ class MainWindow(QtWidgets.QMainWindow):
 
 if __name__ == "__main__":
     try:
-        requests.get("https://example.com")
+        requests.get("https://google.com")
         no_internet_connection = False
     except requests.exceptions.ConnectionError:
         no_internet_connection = True
@@ -1120,7 +1120,7 @@ if __name__ == "__main__":
     gui_messenger = GuiMessenger()
 
     CLIENT_ID = "1399428342117175497"
-    LAUNCHER_VERSION = "v4.3"
+    LAUNCHER_VERSION = "v4.4"
     start_launcher_time = int(time.time())
     window_icon = QtGui.QIcon(
         (
