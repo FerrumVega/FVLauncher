@@ -545,7 +545,7 @@ class MainWindow(QtWidgets.QMainWindow):
                     return True
         except FileNotFoundError:
             pass
-        if self.mod_loader_info != "InstalledVersionsOnly":
+        if not no_internet_connection:
             json_path = os.path.join(
                 self.minecraft_directory,
                 "versions",
@@ -703,7 +703,9 @@ class MainWindow(QtWidgets.QMainWindow):
         name_of_folder_with_version = resolve_version_name(installed_versions_json_path)
         if name_of_folder_with_version is not None:
             return name_of_folder_with_version, self.minecraft_directory, options
-        elif self.mod_loader_info != "InstalledVersionsOnly":
+        elif not no_internet_connection and self.mod_loader_is_supported(
+            self.raw_version, self.mod_loader
+        ):
             install_type(
                 self.raw_version,
                 self.minecraft_directory,
@@ -729,7 +731,7 @@ class MainWindow(QtWidgets.QMainWindow):
                     f"Error message showed in install_version: error after download {self.raw_version} version"
                 )
                 return None
-        else:
+        elif no_internet_connection:
             gui_messenger.critical.emit(
                 self,
                 "Ошибка подключения",
@@ -739,10 +741,20 @@ class MainWindow(QtWidgets.QMainWindow):
             logging.error(
                 f"Error message showed in install_version: cannot download version because there is not internet connection"
             )
+        else:
+            gui_messenger.critical.emit(
+                self,
+                "Ошибка",
+                "Для данной версии нет выбранного вами загрузчика модов.",
+            )
+            self.set_start_button_status.emit(True)
+            logging.error(
+                f"Error message showed in install_version: mod loader {self.mod_loader} is not supported on the {self.raw_version} version"
+            )
 
     @catch_errors
     def download_optifine(self, optifine_path):
-        if self.mod_loader_info != "InstalledVersionsOnly":
+        if not no_internet_connection:
             url = None
             optifine_info = optipy.getVersion(self.raw_version)
             if optifine_info is not None:
@@ -857,20 +869,17 @@ class MainWindow(QtWidgets.QMainWindow):
 
     @catch_errors
     def mod_loader_is_supported(self, raw_version, mod_loader):
-        try:
-            if mod_loader != "vanilla":
-                if minecraft_launcher_lib.mod_loader.get_mod_loader(
-                    mod_loader
-                ).is_minecraft_version_supported(raw_version) and self.v1_6_or_higher(
-                    raw_version
-                ):
-                    return True
-                else:
-                    return False
-            else:
+        if mod_loader != "vanilla":
+            if minecraft_launcher_lib.mod_loader.get_mod_loader(
+                mod_loader
+            ).is_minecraft_version_supported(raw_version) and self.v1_6_or_higher(
+                raw_version
+            ):
                 return True
-        except requests.exceptions.ConnectionError:
-            return "InstalledVersionsOnly"
+            else:
+                return False
+        else:
+            return True
 
     @catch_errors
     def save_config(self):
@@ -907,21 +916,7 @@ class MainWindow(QtWidgets.QMainWindow):
     @catch_errors
     def on_start_button(self):
         self.set_start_button_status.emit(False)
-        self.mod_loader_info = self.mod_loader_is_supported(
-            self.raw_version, self.mod_loader
-        )
-        if self.mod_loader_info:
-            threading.Thread(target=self.launch, daemon=True).start()
-        else:
-            gui_messenger.critical.emit(
-                self,
-                "Ошибка",
-                "Для данной версии нет выбранного вами загрузчика модов.",
-            )
-            self.set_start_button_status.emit(True)
-            logging.error(
-                f"Error message showed in on_start_button: mod loader {self.mod_loader} is not supported on the {self.raw_version} version"
-            )
+        threading.Thread(target=self.launch, daemon=True).start()
 
     @catch_errors
     def set_var(self, pos, var):
@@ -1052,7 +1047,7 @@ class MainWindow(QtWidgets.QMainWindow):
         self.loaders_combobox.addItems(mod_loaders)
         self.loaders_combobox.move(160, 20)
         self.loaders_combobox.setFixedWidth(120)
-        self.loaders_combobox.setCurrentText(self.chosen_mod_loader)
+        self.loaders_combobox.setCurrentText(self.mod_loader)
         self.block_optifine_checkbox()
         self.loaders_combobox.currentIndexChanged.connect(self.block_optifine_checkbox)
         self.loaders_combobox.currentTextChanged.connect(
@@ -1108,6 +1103,12 @@ class MainWindow(QtWidgets.QMainWindow):
 
 
 if __name__ == "__main__":
+    try:
+        requests.get("https://example.com")
+        no_internet_connection = False
+    except requests.exceptions.ConnectionError:
+        no_internet_connection = True
+
     app = QtWidgets.QApplication(sys.argv)
     app.setStyle(QtWidgets.QStyleFactory.create("windows11"))
     gui_messenger = GuiMessenger()
