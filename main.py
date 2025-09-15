@@ -253,6 +253,12 @@ class SettingsWindow(QtWidgets.QDialog):
         self.checkbox_width = self.releases_checkbox.sizeHint().width()
         self.releases_checkbox.move((self.window_width - self.checkbox_width) // 2, 205)
 
+        self.launcher_version_label = QtWidgets.QLabel(self)
+        self.launcher_version_label.setText(f"Версия лаунчера: {LAUNCHER_VERSION}")
+        self.launcher_version_label.move(25, 450)
+        self.launcher_version_label.setFixedWidth(250)
+        self.launcher_version_label.setAlignment(Qt.AlignCenter)
+
         self.show()
 
 
@@ -1114,6 +1120,7 @@ if __name__ == "__main__":
     gui_messenger = GuiMessenger()
 
     CLIENT_ID = "1399428342117175497"
+    LAUNCHER_VERSION = "v4.3"
     start_launcher_time = int(time.time())
     window_icon = QtGui.QIcon(
         (
