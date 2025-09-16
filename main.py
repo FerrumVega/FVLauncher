@@ -530,7 +530,7 @@ class MainWindow(QtWidgets.QMainWindow):
             install_type = minecraft_launcher_lib.install.install_minecraft_version
         options = {
             "username": self.nickname,
-            "uuid": self.ely_uuid,
+            "uuid": self.ely_uuid if self.ely_uuid else str(uuid.uuid4().hex),
             "token": self.access_token,
             "jvmArguments": self.java_arguments,
             "executablePath": self.java_path,
