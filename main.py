@@ -70,7 +70,7 @@ gui_messenger = GuiMessenger()
 
 def log_exception(*args):
     logging.critical(
-        f"There was an error:\n{"".join(traceback.format_exception(*args))}"
+        f"There was an error:\n{''.join(traceback.format_exception(*args))}"
     )
     gui_messenger.critical.emit(
         "Ошибка",
