@@ -15,12 +15,15 @@ def is_new_version_released(current_version):
 
 
 def update(launcher_file_path):
-    with open("FVLauncher_Installer.exe", "wb") as launcher_installer_file:
-        launcher_installer_file.write(
-            requests.get(
-                "https://github.com/FerrumVega/FVLauncher/releases/latest/download/FVLauncher_Installer.exe",
-            ).content
-        )
+    with requests.get(
+        "https://github.com/FerrumVega/FVLauncher/releases/latest/download/FVLauncher_Installer.exe",
+        stream=True,
+    ) as r:
+        r.raise_for_status()
+        with open("FVLauncher_Installer.exe", "wb") as f:
+            for chunk in r.iter_content(chunk_size=1024):
+                if chunk:
+                    f.write(chunk)
 
     process = os.system("FVLauncher_Installer.exe /SILENT")
     os.remove("FVLauncher_Installer.exe")

@@ -1267,6 +1267,29 @@ class MainWindow(QtWidgets.QMainWindow):
         start_rich_presence()
         if self.check_java():
             self.save_config_on_close = True
+
+            if (
+                getattr(sys, "frozen", True)
+                and updater.is_new_version_released(LAUNCHER_VERSION)
+            ) or 1:
+                if (
+                    QtWidgets.QMessageBox.information(
+                        self,
+                        "Новое обновление!",
+                        "Вышло новое обновление лаунчера. Нажмите ОК, для обновления. После загрузки инсталлера, согласитесь на внесение изменений на устройстве. После установки, лаунчер будет автоматически перезапущен.",
+                        QtWidgets.QMessageBox.Ok | QtWidgets.QMessageBox.Cancel,
+                    )
+                    == QtWidgets.QMessageBox.Ok
+                ):
+                    multiprocessing.Process(
+                        target=updater.update,
+                        args=(sys.executable,),
+                        daemon=False,
+                    ).start()
+                    self.save_config_on_close = False
+                    self.close()
+                    return
+
             self._make_ui()
         else:
             self.save_config_on_close = False
@@ -1566,27 +1589,6 @@ class MainWindow(QtWidgets.QMainWindow):
 
         self.show()
 
-        if getattr(sys, "frozen", True) and updater.is_new_version_released(
-            LAUNCHER_VERSION
-        ):
-            if (
-                QtWidgets.QMessageBox.information(
-                    self,
-                    "Новое обновление!",
-                    "Вышло новое обновление лаунчера. Нажмите ОК, для обновления. После загрузки инсталлера, согласитесь на внесение изменений на устройстве. После установки, лаунчер будет автоматически перезапущен.",
-                    QtWidgets.QMessageBox.Ok | QtWidgets.QMessageBox.Cancel,
-                )
-                == QtWidgets.QMessageBox.Ok
-            ):
-                multiprocessing.Process(
-                    target=updater.update,
-                    args=(sys.executable,),
-                    daemon=False,
-                ).start()
-                self.save_config_on_close = False
-                self.close()
-                return
-
 
 if __name__ == "__main__":
     try:
@@ -1596,7 +1598,7 @@ if __name__ == "__main__":
         no_internet_connection = True
 
     CLIENT_ID = "1399428342117175497"
-    LAUNCHER_VERSION = "v5.1.2"
+    LAUNCHER_VERSION = "v5.1.3"
     start_launcher_time = int(time.time())
     config = load_config()
     window = MainWindow(
