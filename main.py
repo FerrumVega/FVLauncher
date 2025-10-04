@@ -1587,8 +1587,6 @@ class MainWindow(QtWidgets.QMainWindow):
                 self.close()
                 return
 
-        sys.exit(app.exec())
-
 
 if __name__ == "__main__":
     try:
@@ -1616,3 +1614,4 @@ if __name__ == "__main__":
         config["show_releases"],
         config["minecraft_directory"],
     )
+    sys.exit(app.exec())
