@@ -1566,7 +1566,7 @@ class MainWindow(QtWidgets.QMainWindow):
 
         self.show()
 
-        if getattr(sys, "frozen", False) and updater.is_new_version_released(
+        if getattr(sys, "frozen", True) and updater.is_new_version_released(
             LAUNCHER_VERSION
         ):
             if (
@@ -1574,7 +1574,7 @@ class MainWindow(QtWidgets.QMainWindow):
                     self,
                     "Новое обновление!",
                     "Вышло новое обновление лаунчера. Нажмите ОК, для обновления. После загрузки инсталлера, согласитесь на внесение изменений на устройстве. После установки, лаунчер будет автоматически перезапущен.",
-                    QtWidgets.QMessageBox.Ok,
+                    QtWidgets.QMessageBox.Ok | QtWidgets.QMessageBox.Cancel,
                 )
                 == QtWidgets.QMessageBox.Ok
             ):
@@ -1596,7 +1596,7 @@ if __name__ == "__main__":
         no_internet_connection = True
 
     CLIENT_ID = "1399428342117175497"
-    LAUNCHER_VERSION = "v5.1"
+    LAUNCHER_VERSION = "v5.1.2"
     start_launcher_time = int(time.time())
     config = load_config()
     window = MainWindow(
