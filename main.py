@@ -1574,7 +1574,7 @@ if __name__ == "__main__":
         no_internet_connection = True
 
     CLIENT_ID = "1399428342117175497"
-    LAUNCHER_VERSION = "v5.1.3"
+    LAUNCHER_VERSION = "v5.2"
     start_launcher_time = int(time.time())
     config = load_config()
     window = MainWindow(
