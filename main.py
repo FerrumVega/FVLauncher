@@ -74,7 +74,7 @@ def log_exception(*args):
     )
     gui_messenger.critical.emit(
         "Ошибка",
-        f"Произошла непредвиденная ошибка:\n{"".join(traceback.format_exception(*args))}",
+        f"Произошла непредвиденная ошибка:\n{''.join(traceback.format_exception(*args))}",
     )
 
 
@@ -824,7 +824,7 @@ class SettingsWindow(QtWidgets.QDialog):
             self.m_window.show_snapshots = pos
         elif var == "releases":
             self.m_window.show_releases = pos
-        elif var == "directory":
+        elif var == "directory" and pos != "":
             self.m_window.minecraft_directory = pos
             self.current_minecraft_directory.setText(
                 f"Текущая папка с игрой:\n{self.m_window.minecraft_directory}"
