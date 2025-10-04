@@ -1107,16 +1107,17 @@ class ProfilesWindow(QtWidgets.QDialog):
             self, "Выберите файл сборки", "", "*.mrpack"
         )[0].replace("/", "\\")
 
-        self.queue = multiprocessing.Queue()
-        self.import_mrpack_process = multiprocessing.Process(
-            target=download_profile_from_mrpack,
-            args=(self.m_window.minecraft_directory, mrpack_path, self.queue),
-            daemon=True,
-        )
-        self.import_mrpack_process.start()
-        self.timer = QTimer()
-        self.timer.timeout.connect(self._update_ui_from_queue)
-        self.timer.start(200)
+        if __name__ == "__main__":
+            self.queue = multiprocessing.Queue()
+            self.import_mrpack_process = multiprocessing.Process(
+                target=download_profile_from_mrpack,
+                args=(self.m_window.minecraft_directory, mrpack_path, self.queue),
+                daemon=True,
+            )
+            self.import_mrpack_process.start()
+            self.timer = QTimer()
+            self.timer.timeout.connect(self._update_ui_from_queue)
+            self.timer.start(200)
 
     def create_own_profile(self):
 
@@ -1347,8 +1348,8 @@ class MainWindow(QtWidgets.QMainWindow):
             self.optifine_checkbox.setDisabled(True)
 
     def on_start_button(self):
-        self.queue = multiprocessing.Queue()
         if __name__ == "__main__":
+            self.queue = multiprocessing.Queue()
             self.minecraft_download_process = multiprocessing.Process(
                 target=run_in_process_with_exceptions_logging,
                 args=(
@@ -1568,6 +1569,7 @@ class MainWindow(QtWidgets.QMainWindow):
 
 
 if __name__ == "__main__":
+    multiprocessing.freeze_support()
     try:
         requests.get("https://google.com")
         no_internet_connection = False
@@ -1575,7 +1577,7 @@ if __name__ == "__main__":
         no_internet_connection = True
 
     CLIENT_ID = "1399428342117175497"
-    LAUNCHER_VERSION = "v5.3"
+    LAUNCHER_VERSION = "v5.3.1"
     start_launcher_time = int(time.time())
     config = load_config()
     window = MainWindow(
