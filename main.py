@@ -1,4 +1,3 @@
-import base64
 import minecraft_launcher_lib
 from PySide6 import QtWidgets, QtGui
 from PySide6.QtCore import QObject, Signal, Qt, QTimer
@@ -16,6 +15,7 @@ import logging
 import optipy
 import multiprocessing
 import traceback
+import updater
 
 logging.basicConfig(
     level=logging.DEBUG,
@@ -584,9 +584,7 @@ class ProjectsSearch(QtWidgets.QDialog):
             project_file_path,
             "wb",
         ) as project_file:
-            project_file.write(
-                requests.get(project_version["url"], stream=True).content
-            )
+            project_file.write(requests.get(project_version["url"]).content)
         with open(profile_info_path, "r", encoding="utf-8") as profile_info_file:
             profile_info = json.load(profile_info_file)
         profile_info[1].append([project_version, project])
@@ -1567,6 +1565,28 @@ class MainWindow(QtWidgets.QMainWindow):
         self.access_token, self.ely_uuid = self.auto_login()
 
         self.show()
+
+        if getattr(sys, "frozen", False) and updater.is_new_version_released(
+            LAUNCHER_VERSION
+        ):
+            if (
+                QtWidgets.QMessageBox.information(
+                    self,
+                    "Новое обновление!",
+                    "Вышло новое обновление лаунчера. Нажмите ОК, для обновления. После загрузки инсталлера, согласитесь на внесение изменений на устройстве. После установки, лаунчер будет автоматически перезапущен.",
+                    QtWidgets.QMessageBox.Ok,
+                )
+                == QtWidgets.QMessageBox.Ok
+            ):
+                multiprocessing.Process(
+                    target=updater.update,
+                    args=(sys.executable,),
+                    daemon=False,
+                ).start()
+                self.save_config_on_close = False
+                self.close()
+                return
+
         sys.exit(app.exec())
 
 
@@ -1578,7 +1598,7 @@ if __name__ == "__main__":
         no_internet_connection = True
 
     CLIENT_ID = "1399428342117175497"
-    LAUNCHER_VERSION = "v5.0-beta"
+    LAUNCHER_VERSION = "v5.1"
     start_launcher_time = int(time.time())
     config = load_config()
     window = MainWindow(
