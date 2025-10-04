@@ -1348,28 +1348,29 @@ class MainWindow(QtWidgets.QMainWindow):
 
     def on_start_button(self):
         self.queue = multiprocessing.Queue()
-        self.minecraft_download_process = multiprocessing.Process(
-            target=run_in_process_with_exceptions_logging,
-            args=(
-                launch,
-                self.minecraft_directory,
-                self.mod_loader,
-                self.raw_version,
-                self.optifine,
-                self.show_console,
-                self.nickname,
-                self.ely_uuid,
-                self.access_token,
-                self.java_arguments,
-                self.queue,
-                no_internet_connection,
-            ),
-            daemon=True,
-        )
-        self.minecraft_download_process.start()
-        self.timer = QTimer()
-        self.timer.timeout.connect(self._update_ui_from_queue)
-        self.timer.start(200)
+        if __name__ == "__main__":
+            self.minecraft_download_process = multiprocessing.Process(
+                target=run_in_process_with_exceptions_logging,
+                args=(
+                    launch,
+                    self.minecraft_directory,
+                    self.mod_loader,
+                    self.raw_version,
+                    self.optifine,
+                    self.show_console,
+                    self.nickname,
+                    self.ely_uuid,
+                    self.access_token,
+                    self.java_arguments,
+                    self.queue,
+                    no_internet_connection,
+                ),
+                daemon=True,
+            )
+            self.minecraft_download_process.start()
+            self.timer = QTimer()
+            self.timer.timeout.connect(self._update_ui_from_queue)
+            self.timer.start(200)
 
     def set_var(self, pos, var):
         if var == "optifine":
