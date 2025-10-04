@@ -15,7 +15,6 @@ import logging
 import optipy
 import multiprocessing
 import traceback
-import updater
 
 logging.basicConfig(
     level=logging.DEBUG,
@@ -1267,29 +1266,6 @@ class MainWindow(QtWidgets.QMainWindow):
         start_rich_presence()
         if self.check_java():
             self.save_config_on_close = True
-
-            if (
-                getattr(sys, "frozen", True)
-                and updater.is_new_version_released(LAUNCHER_VERSION)
-            ) or 1:
-                if (
-                    QtWidgets.QMessageBox.information(
-                        self,
-                        "Новое обновление!",
-                        "Вышло новое обновление лаунчера. Нажмите ОК, для обновления. После загрузки инсталлера, согласитесь на внесение изменений на устройстве. После установки, лаунчер будет автоматически перезапущен.",
-                        QtWidgets.QMessageBox.Ok | QtWidgets.QMessageBox.Cancel,
-                    )
-                    == QtWidgets.QMessageBox.Ok
-                ):
-                    multiprocessing.Process(
-                        target=updater.update,
-                        args=(sys.executable,),
-                        daemon=False,
-                    ).start()
-                    self.save_config_on_close = False
-                    self.close()
-                    return
-
             self._make_ui()
         else:
             self.save_config_on_close = False
