@@ -969,16 +969,6 @@ class SettingsWindow(QtWidgets.QDialog):
         self.current_minecraft_directory.setWordWrap(True)
         self.current_minecraft_directory.setAlignment(Qt.AlignCenter)
 
-        self.third_party_licenses_show_button = QtWidgets.QPushButton(self)
-        self.third_party_licenses_show_button.setText(
-            "Просмотр лицензий сторонних библиотек"
-        )
-        self.third_party_licenses_show_button.setFixedWidth(250)
-        self.third_party_licenses_show_button.move(25, 400)
-        self.third_party_licenses_show_button.clicked.connect(
-            lambda: os.startfile("THIRD_PARTY_LICENSES.txt")
-        )
-
         self.launcher_version_label = QtWidgets.QLabel(self)
         self.launcher_version_label.setText(f"Версия лаунчера: {LAUNCHER_VERSION}")
         self.launcher_version_label.move(25, 450)
@@ -1609,7 +1599,7 @@ if __name__ == "__main__":
         no_internet_connection = True
 
     CLIENT_ID = "1399428342117175497"
-    LAUNCHER_VERSION = "v5.3.1"
+    LAUNCHER_VERSION = "v5.0"
     start_launcher_time = int(time.time())
     config = load_config()
     window = MainWindow(
