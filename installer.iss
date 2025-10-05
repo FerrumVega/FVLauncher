@@ -9,7 +9,7 @@ AppUpdatesURL=https://www.github.com/FerrumVega/FVLauncher
 DefaultDirName={userappdata}\FVLauncher
 DisableDirPage=yes
 DisableProgramGroupPage=yes
-LicenseFile=LICENSE
+LicenseFile=ALL_LICENSES.txt
 OutputBaseFilename=FVLauncher_Installer
 SetupIconFile=assets\minecraft_title.ico
 SolidCompression=yes
@@ -24,6 +24,7 @@ Name: "desktopicon"; Description: "{cm:CreateDesktopIcon}"; GroupDescription: "{
 [Files]
 Source: "dist\main\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs createallsubdirs
 Source: "assets\*"; DestDir: "{app}\assets"; Flags: ignoreversion recursesubdirs createallsubdirs
+Source: "THIRD_PARTY_LICENSES.txt"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs createallsubdirs
 
 [Icons]
 Name: "{autoprograms}\FVLauncher"; Filename: "{app}\main.exe"

@@ -15,6 +15,7 @@ import logging
 import optipy
 import multiprocessing
 import traceback
+import updater
 
 logging.basicConfig(
     level=logging.DEBUG,
@@ -287,9 +288,9 @@ def resolve_version_name(
                 with open(profile_info_path) as profile_info_file:
                     vanilla_version = json.load(profile_info_file)[0]["mc_version"]
 
-                    if resolve_version_name(version, mod_loader, minecraft_directory)[
-                        0
-                    ]:
+                    if resolve_version_name(
+                        vanilla_version, mod_loader, minecraft_directory
+                    )[0]:
                         return vanilla_version, {
                             "gameDir": os.path.join(minecraft_directory, "profiles", v)
                         }
@@ -653,7 +654,7 @@ class ProjectsSearch(QtWidgets.QDialog):
     def show_version_info(self, project, mc_version):
         supported_mc_versions = json.loads(
             requests.get(
-                f"https://api.modrinth.com/v2/project/{project['id']}/version?game_versions={list(mc_version)}"
+                f'https://api.modrinth.com/v2/project/{project["id"]}/version?game_versions=["{mc_version}"]'
             ).text
         )
         self.install_project_window = QtWidgets.QDialog(self.project_info_window)
@@ -692,7 +693,7 @@ class ProjectsSearch(QtWidgets.QDialog):
         mc_versions = project["game_versions"]
         while self.versions_layout.count():
             self.versions_layout.takeAt(0).widget().deleteLater()
-        for mc_version in sorted(mc_versions, reverse=True):
+        for mc_version in mc_versions[::-1]:
             w = ClickableLabel(text=mc_version)
             w.clicked.connect(
                 lambda current_mc_version=mc_version: self.show_version_info(
@@ -960,13 +961,23 @@ class SettingsWindow(QtWidgets.QDialog):
         self.minecraft_directory_button.setText("Выбор папки для файов игры")
 
         self.current_minecraft_directory = QtWidgets.QLabel(self)
-        self.current_minecraft_directory.move(25, 300)
+        self.current_minecraft_directory.move(25, 310)
         self.current_minecraft_directory.setFixedWidth(250)
         self.current_minecraft_directory.setText(
             f"Текущая папка с игрой:\n{self.m_window.minecraft_directory}"
         )
         self.current_minecraft_directory.setWordWrap(True)
         self.current_minecraft_directory.setAlignment(Qt.AlignCenter)
+
+        self.third_party_licenses_show_button = QtWidgets.QPushButton(self)
+        self.third_party_licenses_show_button.setText(
+            "Просмотр лицензий сторонних библиотек"
+        )
+        self.third_party_licenses_show_button.setFixedWidth(250)
+        self.third_party_licenses_show_button.move(25, 400)
+        self.third_party_licenses_show_button.clicked.connect(
+            lambda: os.startfile("THIRD_PARTY_LICENSES.txt")
+        )
 
         self.launcher_version_label = QtWidgets.QLabel(self)
         self.launcher_version_label.setText(f"Версия лаунчера: {LAUNCHER_VERSION}")
@@ -1566,6 +1577,27 @@ class MainWindow(QtWidgets.QMainWindow):
         self.access_token, self.ely_uuid = self.auto_login()
 
         self.show()
+
+        if getattr(sys, "frozen", False) and updater.is_new_version_released(
+            LAUNCHER_VERSION
+        ):
+            if (
+                QtWidgets.QMessageBox.information(
+                    self,
+                    "Новое обновление!",
+                    "Вышло новое обновление лаунчера. Нажмите ОК, для обновления. После загрузки инсталлера, согласитесь на внесение изменений на устройстве. После установки, лаунчер будет автоматически перезапущен.",
+                    QtWidgets.QMessageBox.Ok,
+                )
+                == QtWidgets.QMessageBox.Ok
+            ):
+                multiprocessing.Process(
+                    target=updater.update,
+                    args=(sys.executable,),
+                    daemon=False,
+                ).start()
+                self.save_config_on_close = False
+                self.close()
+                return
 
 
 if __name__ == "__main__":
