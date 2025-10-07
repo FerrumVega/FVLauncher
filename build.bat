@@ -15,9 +15,9 @@ for /f %%v in ('git describe --tags') do set TAG=%%v
   )
 )
 
-type LICENSE > ALL_LICENSES.txt
-echo. >> ALL_LICENSES.txt
-type THIRD_PARTY_LICENSES.txt >> ALL_LICENSES.txt
+type LICENSE > ALL_LICENSES
+echo. >> ALL_LICENSES
+type THIRD_PARTY_LICENSES >> ALL_LICENSES
 
 move /Y installer_tmp.iss installer.iss >nul
 

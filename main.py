@@ -42,15 +42,21 @@ class GuiMessenger(QObject):
     warning = Signal(str, str)
     critical = Signal(str, str)
     info = Signal(str, str)
+    log = Signal(str, str, str)
 
-    def emit_msg(self, t, m, type):
+    def emit_msg(self, t, m, type, is_log=False, directory=None):
         global window_icon
         msg = QtWidgets.QMessageBox()
         msg.setWindowTitle(t)
         msg.setText(m)
         msg.setWindowIcon(window_icon)
         msg.setIcon(type)
-        msg.exec()
+        if is_log:
+            msg.setStandardButtons(QtWidgets.QMessageBox.Yes | QtWidgets.QMessageBox.No)
+            if msg.exec() == QtWidgets.QMessageBox.Yes:
+                os.startfile(os.path.join(directory, "logs", "latest.log"))
+        else:
+            msg.exec()
 
     def __init__(self):
         super().__init__()
@@ -62,6 +68,9 @@ class GuiMessenger(QObject):
         )
         self.info.connect(
             lambda t, m: self.emit_msg(t, m, QtWidgets.QMessageBox.Information)
+        )
+        self.log.connect(
+            lambda t, m, d: self.emit_msg(t, m, QtWidgets.QMessageBox.Critical, True, d)
         )
 
 
@@ -153,6 +162,7 @@ def download_profile_from_mrpack(minecraft_directory, mrpack_path, queue):
                     [],
                 ],
                 profile_info_file,
+                indent=4,
             )
 
 
@@ -287,7 +297,6 @@ def resolve_version_name(
             if version == v and os.path.isfile(profile_info_path):
                 with open(profile_info_path) as profile_info_file:
                     vanilla_version = json.load(profile_info_file)[0]["mc_version"]
-
                     if resolve_version_name(
                         vanilla_version, mod_loader, minecraft_directory
                     )[0]:
@@ -295,6 +304,7 @@ def resolve_version_name(
                             "gameDir": os.path.join(minecraft_directory, "profiles", v)
                         }
                     else:
+                        # ТОГДА КАЧАЕМ
                         return None, {}
         else:
             return None, {}
@@ -326,11 +336,9 @@ def install_version(
                 elif type == "max":
                     max_progress = value
                 try:
-                    percents = progress / max_progress * 100
+                    percents = min(100.0, progress / max_progress * 100)
                 except ZeroDivisionError:
                     percents = 0
-                if percents > 100.0:
-                    percents = 100.0
                 queue.put(("progressbar", percents))
                 last_track_progress_call_time = time.time()
             else:
@@ -486,6 +494,14 @@ def launch(
     logging.debug(f"Minecraft process started on {version} version")
     queue.put(("start_button", True))
     start_rich_presence(raw_version, True, minecraft_process)
+    minecraft_return_code = minecraft_process.wait()
+    if minecraft_return_code != 0:
+        gui_messenger.log.emit(
+            "Игра была закрыта с ошибкой",
+            f"Minecraft вернул ошибку (крашнулся). Код ошибки: {minecraft_return_code}<br>"
+            "Вы хотите открыть лог?",
+            minecraft_directory,
+        )
 
 
 def mod_loader_is_supported(raw_version, mod_loader):
@@ -580,16 +596,32 @@ class ProjectsSearch(QtWidgets.QDialog):
             "profile_info.json",
         )
         os.makedirs(os.path.dirname(project_file_path), exist_ok=True)
-        with open(
-            project_file_path,
-            "wb",
-        ) as project_file:
-            project_file.write(requests.get(project_version["url"]).content)
+
+        with requests.get(project_version["url"], stream=True) as r:
+            r.raise_for_status()
+            with open(
+                project_file_path,
+                "wb",
+            ) as project_file:
+                bytes_downloaded = 0
+                project_size = project_version["size"]
+                chunk_size = int(project_size / 100)
+                for chunk in r.iter_content(chunk_size=chunk_size):
+                    if chunk:
+                        bytes_downloaded += chunk_size
+                        print(min(100, int(bytes_downloaded / project_size * 100)))
+                        project_file.write(chunk)
+
         with open(profile_info_path, "r", encoding="utf-8") as profile_info_file:
             profile_info = json.load(profile_info_file)
-        profile_info[1].append([project_version, project])
-        with open(profile_info_path, "w", encoding="utf-8") as profile_info_file:
-            json.dump(profile_info, profile_info_file, indent=4)
+        if not [project_version, project] in profile_info[1]:
+            profile_info[1].append([project_version, project])
+            with open(profile_info_path, "w", encoding="utf-8") as profile_info_file:
+                json.dump(profile_info, profile_info_file, indent=4)
+        gui_messenger.info.emit(
+            "Проект установлен",
+            f"Проект {project["title"]} был успешно установлен.",
+        )
 
     def install_project(self, current_loader, mc_version, project_version, project):
         found = False
@@ -717,13 +749,23 @@ class ProjectsSearch(QtWidgets.QDialog):
 
         self.project_title = QtWidgets.QLabel(self.project_info_window)
         self.project_title.move(20, 20)
-        self.project_title.setText(project["title"])
+        self.downloads = f"{project['downloads']:_}".replace("_", " ")
+        self.project_title.setText(f"{project['title']} ({self.downloads} скачиваний)")
         self.project_title.setAlignment(Qt.AlignCenter)
         self.project_title.setFixedWidth(260)
 
+        self.icon = QtGui.QPixmap()
+        self.icon.loadFromData(requests.get(project["icon_url"]).content)
+        self.project_icon = QtWidgets.QLabel(self.project_info_window)
+        self.project_icon.setPixmap(self.icon)
+        self.project_icon.move(100, 40)
+
         self.project_description = QtWidgets.QLabel(self.project_info_window)
-        self.project_description.move(20, 40)
-        self.project_description.setText(project["description"])
+        self.project_description.move(20, 140)
+        self.project_description.setText(
+            project["description"][:130]
+            + ("..." if len(project["description"]) > 130 else "")
+        )
         self.project_description.setAlignment(Qt.AlignCenter)
         self.project_description.setFixedWidth(260)
         self.project_description.setWordWrap(True)
@@ -732,8 +774,8 @@ class ProjectsSearch(QtWidgets.QDialog):
         self.versions_layout = QtWidgets.QVBoxLayout(self.versions_container)
 
         self.scroll_area = QtWidgets.QScrollArea(self.project_info_window)
-        self.scroll_area.move(0, 100)
-        self.scroll_area.setFixedSize(300, 200)
+        self.scroll_area.move(0, 200)
+        self.scroll_area.setFixedSize(300, 300)
         self.scroll_area.setWidget(self.versions_container)
         self.scroll_area.setWidgetResizable(True)
         self.show_versions(project)
@@ -789,41 +831,14 @@ class ProjectsSearch(QtWidgets.QDialog):
 
 class SettingsWindow(QtWidgets.QDialog):
 
-    def __init__(
-        self,
-        window,
-        java_arguments,
-        show_console,
-        show_old_alphas,
-        show_old_betas,
-        show_snapshots,
-        show_releases,
-    ):
+    def __init__(self, window):
         super().__init__(window)
         self.m_window = window
-        self.m_window.java_arguments = java_arguments
-        self.m_window.show_console = show_console
-        self.m_window.show_old_alphas = show_old_alphas
-        self.m_window.show_old_betas = show_old_betas
-        self.m_window.show_snapshots = show_snapshots
-        self.m_window.show_releases = show_releases
         self._make_ui()
 
-    def set_var(self, pos, var):
-        if var == "java_arguments":
-            self.m_window.java_arguments = pos
-        elif var == "show_console":
-            self.m_window.show_console = pos
-        elif var == "alphas":
-            self.m_window.show_old_alphas = pos
-        elif var == "betas":
-            self.m_window.show_old_betas = pos
-        elif var == "snapshots":
-            self.m_window.show_snapshots = pos
-        elif var == "releases":
-            self.m_window.show_releases = pos
-        elif var == "directory" and pos != "":
-            self.m_window.minecraft_directory = pos
+    def set_game_directory(self, directory):
+        if directory != "":
+            self.m_window.minecraft_directory = directory
             self.current_minecraft_directory.setText(
                 f"Текущая папка с игрой:\n{self.m_window.minecraft_directory}"
             )
@@ -832,6 +847,12 @@ class SettingsWindow(QtWidgets.QDialog):
         os.makedirs(
             os.path.join(self.m_window.minecraft_directory, "profiles"), exist_ok=True
         )
+        self.m_window.java_arguments = self.java_arguments_entry.text()
+        self.m_window.show_console = self.show_console_checkbox.isChecked()
+        self.m_window.show_old_alphas = self.old_alphas_checkbox.isChecked()
+        self.m_window.show_old_betas = self.old_betas_checkbox.isChecked()
+        self.m_window.show_snapshots = self.snapshots_checkbox.isChecked()
+        self.m_window.show_releases = self.releases_checkbox.isChecked()
         return super().closeEvent(event)
 
     def _make_ui(self):
@@ -846,17 +867,11 @@ class SettingsWindow(QtWidgets.QDialog):
 
         self.java_arguments_entry = QtWidgets.QLineEdit(self)
         self.java_arguments_entry.setText(self.m_window.java_arguments)
-        self.java_arguments_entry.textChanged.connect(
-            lambda pos: self.set_var(pos, "java_arguments")
-        )
         self.java_arguments_entry.move(25, 45)
         self.java_arguments_entry.setFixedWidth(250)
 
         self.show_console_checkbox = QtWidgets.QCheckBox(self)
         self.show_console_checkbox.setChecked(self.m_window.show_console)
-        self.show_console_checkbox.stateChanged.connect(
-            lambda pos: self.set_var(pos, "show_console")
-        )
         self.show_console_checkbox.setText("Запуск с консолью")
         checkbox_width = self.show_console_checkbox.sizeHint().width()
         self.m_window_width = self.width()
@@ -869,9 +884,6 @@ class SettingsWindow(QtWidgets.QDialog):
 
         self.old_alphas_checkbox = QtWidgets.QCheckBox(self)
         self.old_alphas_checkbox.setChecked(self.m_window.show_old_alphas)
-        self.old_alphas_checkbox.stateChanged.connect(
-            lambda pos: self.set_var(pos, "alphas")
-        )
         self.old_alphas_checkbox.setText("Старые альфы")
         self.old_alphas_checkbox.stateChanged.connect(
             lambda: self.m_window.show_versions(
@@ -889,9 +901,6 @@ class SettingsWindow(QtWidgets.QDialog):
 
         self.old_betas_checkbox = QtWidgets.QCheckBox(self)
         self.old_betas_checkbox.setChecked(self.m_window.show_old_betas)
-        self.old_betas_checkbox.stateChanged.connect(
-            lambda pos: self.set_var(pos, "betas")
-        )
         self.old_betas_checkbox.setText("Старые беты")
         self.old_betas_checkbox.stateChanged.connect(
             lambda: self.m_window.show_versions(
@@ -909,9 +918,6 @@ class SettingsWindow(QtWidgets.QDialog):
 
         self.snapshots_checkbox = QtWidgets.QCheckBox(self)
         self.snapshots_checkbox.setChecked(self.m_window.show_snapshots)
-        self.snapshots_checkbox.stateChanged.connect(
-            lambda pos: self.set_var(pos, "snapshots")
-        )
         self.snapshots_checkbox.setText("Снапшоты")
         self.snapshots_checkbox.stateChanged.connect(
             lambda: self.m_window.show_versions(
@@ -929,9 +935,6 @@ class SettingsWindow(QtWidgets.QDialog):
 
         self.releases_checkbox = QtWidgets.QCheckBox(self)
         self.releases_checkbox.setChecked(self.m_window.show_releases)
-        self.releases_checkbox.stateChanged.connect(
-            lambda pos: self.set_var(pos, "releases")
-        )
         self.releases_checkbox.setText("Релизы")
         self.releases_checkbox.stateChanged.connect(
             lambda: self.m_window.show_versions(
@@ -951,11 +954,10 @@ class SettingsWindow(QtWidgets.QDialog):
         self.minecraft_directory_button.move(25, 280)
         self.minecraft_directory_button.setFixedWidth(250)
         self.minecraft_directory_button.clicked.connect(
-            lambda: self.set_var(
+            lambda: self.set_game_directory(
                 QtWidgets.QFileDialog.getExistingDirectory(
                     self, "Выбор папки для файлов игры"
-                ),
-                "directory",
+                )
             )
         )
         self.minecraft_directory_button.setText("Выбор папки для файов игры")
@@ -1138,6 +1140,7 @@ class ProfilesWindow(QtWidgets.QDialog):
                         [],
                     ],
                     profile_info_file,
+                    indent=4,
                 )
             gui_messenger.info.emit(
                 "Создание папки профиля",
@@ -1274,6 +1277,10 @@ class MainWindow(QtWidgets.QMainWindow):
             self.close()
 
     def closeEvent(self, event):
+        self.optifine = self.optifine_checkbox.isChecked()
+        self.mod_loader = self.loaders_combobox.currentText()
+        self.raw_version = self.versions_combobox.currentText()
+        self.nickname = self.nickname_entry.text()
         if self.save_config_on_close:
             self.save_config()
         logging.debug("Launcher was closed")
@@ -1350,6 +1357,11 @@ class MainWindow(QtWidgets.QMainWindow):
 
     def on_start_button(self):
         if __name__ == "__main__":
+            self.optifine = self.optifine_checkbox.isChecked()
+            self.mod_loader = self.loaders_combobox.currentText()
+            self.raw_version = self.versions_combobox.currentText()
+            self.nickname = self.nickname_entry.text()
+
             self.queue = multiprocessing.Queue()
             self.minecraft_download_process = multiprocessing.Process(
                 target=run_in_process_with_exceptions_logging,
@@ -1373,16 +1385,6 @@ class MainWindow(QtWidgets.QMainWindow):
             self.timer = QTimer()
             self.timer.timeout.connect(self._update_ui_from_queue)
             self.timer.start(200)
-
-    def set_var(self, pos, var):
-        if var == "optifine":
-            self.optifine = pos
-        elif var == "mod_loader":
-            self.mod_loader = pos
-        elif var == "version":
-            self.raw_version = pos
-        elif var == "nickname":
-            self.nickname = pos
 
     def auto_login(self):
         try:
@@ -1475,9 +1477,6 @@ class MainWindow(QtWidgets.QMainWindow):
             self.show_releases,
         )
         self.versions_combobox.setCurrentText(self.raw_version)
-        self.versions_combobox.currentTextChanged.connect(
-            lambda pos: self.set_var(pos, "version")
-        )
         self.versions_combobox.setFixedHeight(30)
         self.versions_combobox.setEditable(True)
 
@@ -1486,18 +1485,12 @@ class MainWindow(QtWidgets.QMainWindow):
         self.nickname_entry.setFixedWidth(260)
         self.nickname_entry.setPlaceholderText("Никнейм")
         self.nickname_entry.setText(self.nickname)
-        self.nickname_entry.textChanged.connect(
-            lambda pos: self.set_var(pos, "nickname")
-        )
 
         self.optifine_checkbox = QtWidgets.QCheckBox(self)
         self.optifine_checkbox.setText("Optifine")
         self.optifine_checkbox.move(20, 100)
         self.optifine_checkbox.setFixedWidth(260)
         self.optifine_checkbox.setChecked(self.optifine)
-        self.optifine_checkbox.stateChanged.connect(
-            lambda pos: self.set_var(pos, "optifine")
-        )
 
         mod_loaders = ["fabric", "forge", "quilt", "neoforge", "vanilla"]
         self.loaders_combobox = QtWidgets.QComboBox(self)
@@ -1507,9 +1500,6 @@ class MainWindow(QtWidgets.QMainWindow):
         self.loaders_combobox.setCurrentText(self.mod_loader)
         self.block_optifine_checkbox()
         self.loaders_combobox.currentIndexChanged.connect(self.block_optifine_checkbox)
-        self.loaders_combobox.currentTextChanged.connect(
-            lambda pos: self.set_var(pos, "mod_loader")
-        )
         self.loaders_combobox.setFixedHeight(30)
         self.loaders_combobox.setEditable(True)
 
@@ -1544,17 +1534,7 @@ class MainWindow(QtWidgets.QMainWindow):
 
         self.settings_button = QtWidgets.QPushButton(self)
         self.settings_button.setText("⚙️")
-        self.settings_button.clicked.connect(
-            lambda: SettingsWindow(
-                self,
-                self.java_arguments,
-                self.show_console,
-                self.show_old_alphas,
-                self.show_old_betas,
-                self.show_snapshots,
-                self.show_releases,
-            )
-        )
+        self.settings_button.clicked.connect(lambda: SettingsWindow(self))
         self.settings_button.move(5, 465)
         self.settings_button.setFixedSize(30, 30)
 
@@ -1575,8 +1555,14 @@ class MainWindow(QtWidgets.QMainWindow):
                 QtWidgets.QMessageBox.information(
                     self,
                     "Новое обновление!",
-                    "Вышло новое обновление лаунчера. Нажмите ОК, для обновления. После загрузки инсталлера, согласитесь на внесение изменений на устройстве. После установки, лаунчер будет автоматически перезапущен.",
-                    QtWidgets.QMessageBox.Ok,
+                    "Вышло новое обновление лаунчера.<br>"
+                    "Нажмите ОК для обновления.<br>"
+                    "После загрузки инсталлера, согласитесь на внесение изменений на устройстве.<br>"
+                    "После установки, лаунчер будет автоматически перезапущен.<br>"
+                    'Нажимая "OK", вы соглашаетесь с текстами лицензий, расположенных по адресам:<br>'
+                    '<a href="https://raw.githubusercontent.com/FerrumVega/FVLauncher/refs/heads/main/LICENSE">https://raw.githubusercontent.com/FerrumVega/FVLauncher/refs/heads/main/LICENSE</a><br>'
+                    '<a href="https://raw.githubusercontent.com/FerrumVega/FVLauncher/refs/heads/main/THIRD_PARTY_LICENSES">https://raw.githubusercontent.com/FerrumVega/FVLauncher/refs/heads/main/THIRD_PARTY_LICENSES</a>',
+                    QtWidgets.QMessageBox.Ok | QtWidgets.QMessageBox.Cancel,
                 )
                 == QtWidgets.QMessageBox.Ok
             ):
