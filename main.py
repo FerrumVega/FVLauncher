@@ -620,7 +620,7 @@ class ProjectsSearch(QtWidgets.QDialog):
                 json.dump(profile_info, profile_info_file, indent=4)
         gui_messenger.info.emit(
             "Проект установлен",
-            f"Проект {project["title"]} был успешно установлен.",
+            f"Проект {project['title']} был успешно установлен.",
         )
 
     def install_project(self, current_loader, mc_version, project_version, project):
@@ -1585,7 +1585,7 @@ if __name__ == "__main__":
         no_internet_connection = True
 
     CLIENT_ID = "1399428342117175497"
-    LAUNCHER_VERSION = "v5.0"
+    LAUNCHER_VERSION = "v5.1"
     start_launcher_time = int(time.time())
     config = load_config()
     window = MainWindow(
