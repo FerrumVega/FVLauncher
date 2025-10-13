@@ -422,7 +422,7 @@ def download_optifine(optifine_path, raw_version, queue, no_internet_connection)
         optifine_info = optipy.getVersion(raw_version)
         if optifine_info is not None:
             url = optifine_info[raw_version][0]["url"]
-            queue.put(("start_button", "Загрузка optifine..."))
+            queue.put(("status", "Загрузка optifine..."))
             logging.debug("Installing optifine in download_optifine")
             with open(optifine_path, "wb") as optifine_jar:
                 optifine_jar.write(requests.get(url).content)
@@ -582,19 +582,35 @@ class ProjectsSearch(QtWidgets.QDialog):
             "datapack": "datapacks",
             "shader": "shaderpacks",
         }
-        project_file_path = os.path.join(
-            self.minecraft_directory.replace("/", "\\"),
-            "profiles",
-            profile,
-            type_to_dir[project["project_type"]],
-            project_version["filename"],
-        )
-        profile_info_path = os.path.join(
-            self.minecraft_directory.replace("/", "\\"),
-            "profiles",
-            profile,
-            "profile_info.json",
-        )
+        if profile:
+            project_file_path = os.path.join(
+                self.minecraft_directory.replace("/", "\\"),
+                "profiles",
+                profile,
+                type_to_dir[project["project_type"]],
+                project_version["filename"],
+            )
+            profile_info_path = os.path.join(
+                self.minecraft_directory.replace("/", "\\"),
+                "profiles",
+                profile,
+                "profile_info.json",
+            )
+        else:
+            project_file_path = os.path.join(
+                self.minecraft_directory.replace("/", "\\"),
+                type_to_dir[project["project_type"]],
+                project_version["filename"],
+            )
+            profile_info_path = os.path.join(
+                self.minecraft_directory.replace("/", "\\"), "profile_info.json"
+            )
+            if not os.path.isfile(profile_info_path):
+                with open(
+                    profile_info_path, "w", encoding="utf-8"
+                ) as profile_info_file:
+                    json.dump([{"mc_version": "any"}, []], profile_info_file, indent=4)
+
         os.makedirs(os.path.dirname(project_file_path), exist_ok=True)
 
         with requests.get(project_version["url"], stream=True) as r:
@@ -611,7 +627,6 @@ class ProjectsSearch(QtWidgets.QDialog):
                         bytes_downloaded += chunk_size
                         print(min(100, int(bytes_downloaded / project_size * 100)))
                         project_file.write(chunk)
-
         with open(profile_info_path, "r", encoding="utf-8") as profile_info_file:
             profile_info = json.load(profile_info_file)
         if not [project_version, project] in profile_info[1]:
@@ -623,8 +638,7 @@ class ProjectsSearch(QtWidgets.QDialog):
             f"Проект {project['title']} был успешно установлен.",
         )
 
-    def install_project(self, current_loader, mc_version, project_version, project):
-        found = False
+    def install_project(self, project_version, project):
         profiles = []
         if project["project_type"] in ["plugin", "modpack"]:
             QtWidgets.QMessageBox.critical(
@@ -633,33 +647,8 @@ class ProjectsSearch(QtWidgets.QDialog):
                 "Вы не можете скачать плагин/модпак в профиль",
             )
             return
-        if project["project_type"] == "mod":
-            for v in os.listdir(os.path.join(self.minecraft_directory, "profiles")):
-                profile_info_path = os.path.join(
-                    self.minecraft_directory,
-                    "profiles",
-                    v,
-                    "profile_info.json",
-                )
-                if os.path.isfile(profile_info_path):
-                    with open(profile_info_path) as profile_info_file:
-                        vanilla_version = json.load(profile_info_file)[0]["mc_version"]
-                        version_name = resolve_version_name(
-                            mc_version, current_loader, self.minecraft_directory
-                        )[0]
-                        if version_name is not None and vanilla_version == version_name:
-                            profiles.append(v)
-                            found = True
-        if not found and project["project_type"] == "mod":
-            QtWidgets.QMessageBox.critical(
-                self.install_project_window,
-                "Ошибка",
-                "Нет установленных версий, подходящих для этого проекта",
-            )
-            return
-        elif project["project_type"] != "mod":
-            for v in os.listdir(os.path.join(self.minecraft_directory, "profiles")):
-                profiles.append(v)
+        for v in os.listdir(os.path.join(self.minecraft_directory, "profiles")):
+            profiles.append(v)
         self.profiles_window = QtWidgets.QDialog(self.install_project_window)
         self.profiles_window.setModal(True)
         self.profiles_window.setWindowTitle(f"Выбор профиля для загрузки проекта")
@@ -680,44 +669,47 @@ class ProjectsSearch(QtWidgets.QDialog):
                     project_version, project, cur_profile
                 )
             )
+        download_button = QtWidgets.QPushButton(self.profiles_window)
+        download_button.setText("В корень (без сборки)")
+        download_button.setFixedWidth(240)
+        download_button.move(30, start_y_coord)
+        buttons.append(download_button)
+        start_y_coord += 30
+        download_button.clicked.connect(
+            lambda *args, cur_profile="": self.download_project_process(
+                project_version, project, cur_profile
+            )
+        )
 
         self.profiles_window.show()
 
     def show_version_info(self, project, mc_version):
-        supported_mc_versions = json.loads(
-            requests.get(
-                f'https://api.modrinth.com/v2/project/{project["id"]}/version?game_versions=["{mc_version}"]'
-            ).text
-        )
         self.install_project_window = QtWidgets.QDialog(self.project_info_window)
         self.install_project_window.setModal(True)
         self.install_project_window.setWindowTitle(f"Загрузка {project['title']}")
         self.install_project_window.setFixedSize(300, 500)
 
         start_y_coord = 30
-        buttons = []
-        loaders = []
 
-        for version in supported_mc_versions:
-            for loader in version["loaders"]:
-                if not loader in loaders:
-                    loaders.append(loader)
-                    download_button = QtWidgets.QPushButton(self.install_project_window)
-                    download_button.setText(loader)
-                    download_button.setFixedWidth(240)
-                    download_button.move(30, start_y_coord)
-                    buttons.append(download_button)
-                    start_y_coord += 30
-                    download_button.clicked.connect(
-                        lambda *args, current_loader=loader, cur_version=version[
-                            "files"
-                        ][0]: self.install_project(
-                            current_loader,
-                            mc_version,
-                            cur_version,
-                            project,
-                        )
+        for loader in project["loaders"]:
+            versions = json.loads(
+                requests.get(
+                    f'https://api.modrinth.com/v2/project/{project["id"]}/version?game_versions=["{mc_version}"]&loaders=["{loader}"]'
+                ).text
+            )
+            version = versions[0] if versions else None
+            if version is not None:
+                download_button = QtWidgets.QPushButton(self.install_project_window)
+                download_button.setText(loader)
+                download_button.setFixedWidth(240)
+                download_button.move(30, start_y_coord)
+                start_y_coord += 30
+                download_button.clicked.connect(
+                    lambda *args, cur_version=version["files"][0]: self.install_project(
+                        cur_version,
+                        project,
                     )
+                )
 
         self.install_project_window.show()
 
@@ -757,6 +749,7 @@ class ProjectsSearch(QtWidgets.QDialog):
         self.icon = QtGui.QPixmap()
         self.icon.loadFromData(requests.get(project["icon_url"]).content)
         self.project_icon = QtWidgets.QLabel(self.project_info_window)
+        self.icon = self.icon.scaled(100, 100)
         self.project_icon.setPixmap(self.icon)
         self.project_icon.move(100, 40)
 
@@ -1362,6 +1355,8 @@ class MainWindow(QtWidgets.QMainWindow):
             self.raw_version = self.versions_combobox.currentText()
             self.nickname = self.nickname_entry.text()
 
+            self.start_button.setEnabled(False)
+
             self.queue = multiprocessing.Queue()
             self.minecraft_download_process = multiprocessing.Process(
                 target=run_in_process_with_exceptions_logging,
@@ -1377,7 +1372,7 @@ class MainWindow(QtWidgets.QMainWindow):
                     self.access_token,
                     self.java_arguments,
                     self.queue,
-                    no_internet_connection,
+                    self.no_internet_connection,
                 ),
                 daemon=True,
             )
@@ -1387,7 +1382,7 @@ class MainWindow(QtWidgets.QMainWindow):
             self.timer.start(200)
 
     def auto_login(self):
-        try:
+        if not self.no_internet_connection:
             if self.saved_ely_uuid and self.saved_access_token:
                 valid_token_info = requests.post(
                     "https://authserver.ely.by/auth/validate",
@@ -1424,7 +1419,7 @@ class MainWindow(QtWidgets.QMainWindow):
             else:
                 self.sign_status = "Статус: вы не вошли в аккаунт"
                 return self.saved_access_token, self.saved_ely_uuid
-        except requests.exceptions.ConnectionError:
+        else:
             self.sign_status = "Статус: вы не вошли в аккаунт"
             return self.saved_access_token, self.saved_ely_uuid
 
@@ -1544,9 +1539,15 @@ class MainWindow(QtWidgets.QMainWindow):
         self.account_button.move(265, 465)
         self.account_button.setFixedSize(30, 30)
 
-        self.access_token, self.ely_uuid = self.auto_login()
-
         self.show()
+
+        try:
+            requests.get("https://google.com")
+            self.no_internet_connection = False
+        except requests.exceptions.ConnectionError:
+            self.no_internet_connection = True
+
+        self.access_token, self.ely_uuid = self.auto_login()
 
         if getattr(sys, "frozen", False) and updater.is_new_version_released(
             LAUNCHER_VERSION
@@ -1566,26 +1567,21 @@ class MainWindow(QtWidgets.QMainWindow):
                 )
                 == QtWidgets.QMessageBox.Ok
             ):
+                self.save_config_on_close = False
+                self.close()
                 multiprocessing.Process(
                     target=updater.update,
                     args=(sys.executable,),
                     daemon=False,
                 ).start()
-                self.save_config_on_close = False
-                self.close()
                 return
 
 
 if __name__ == "__main__":
     multiprocessing.freeze_support()
-    try:
-        requests.get("https://google.com")
-        no_internet_connection = False
-    except requests.exceptions.ConnectionError:
-        no_internet_connection = True
 
     CLIENT_ID = "1399428342117175497"
-    LAUNCHER_VERSION = "v5.1"
+    LAUNCHER_VERSION = "v5.2"
     start_launcher_time = int(time.time())
     config = load_config()
     window = MainWindow(

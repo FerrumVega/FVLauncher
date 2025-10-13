@@ -1,3 +1,4 @@
+import subprocess
 import os
 import requests
 import json
@@ -22,7 +23,12 @@ def update(launcher_file_path):
             ).content
         )
 
-    process = os.system("FVLauncher_Installer.exe /SILENT")
+    process = subprocess.run(
+        ["FVLauncher_Installer.exe", "/SILENT"],
+        creationflags=subprocess.CREATE_NO_WINDOW,
+    )
     os.remove("FVLauncher_Installer.exe")
-    if process == 0:
-        os.system(launcher_file_path)
+    subprocess.run(
+        [launcher_file_path],
+        creationflags=subprocess.CREATE_NO_WINDOW,
+    )
