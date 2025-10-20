@@ -44,14 +44,14 @@ class GuiMessenger(QObject):
     info = Signal(str, str)
     log = Signal(str, str, str)
 
-    def emit_msg(self, t, m, type, is_log=False, directory=None):
+    def emit_msg(self, t, m, type, directory=None):
         global window_icon
         msg = QtWidgets.QMessageBox()
         msg.setWindowTitle(t)
         msg.setText(m)
         msg.setWindowIcon(window_icon)
         msg.setIcon(type)
-        if is_log:
+        if directory is not None:
             msg.setStandardButtons(QtWidgets.QMessageBox.Yes | QtWidgets.QMessageBox.No)
             if msg.exec() == QtWidgets.QMessageBox.Yes:
                 os.startfile(os.path.join(directory, "logs", "latest.log"))
@@ -70,7 +70,7 @@ class GuiMessenger(QObject):
             lambda t, m: self.emit_msg(t, m, QtWidgets.QMessageBox.Information)
         )
         self.log.connect(
-            lambda t, m, d: self.emit_msg(t, m, QtWidgets.QMessageBox.Critical, True, d)
+            lambda t, m, d: self.emit_msg(t, m, QtWidgets.QMessageBox.Critical, d)
         )
 
 
@@ -186,9 +186,6 @@ def prepare_installation_parameters(
 
 def download_injector(raw_version, minecraft_directory, no_internet_connection):
     if not no_internet_connection:
-        if not minecraft_launcher_lib.utils.is_vanilla_version(raw_version):
-            with open(json_path) as file_with_downloads:
-                raw_version = json.load(file_with_downloads)["inheritsFrom"]
         json_path = os.path.join(
             minecraft_directory,
             "versions",
@@ -234,6 +231,7 @@ def download_injector(raw_version, minecraft_directory, no_internet_connection):
                 logging.warning(
                     f"Warning message showed in download_injector: skin error, there is not patched authlib for {raw_version} version"
                 )
+                return "InjectorNotDownloaded"
         else:
             gui_messenger.warning.emit(
                 "Ошибка скина",
@@ -242,7 +240,6 @@ def download_injector(raw_version, minecraft_directory, no_internet_connection):
             logging.warning(
                 f"Warning message showed in download_injector: skins not supported on {raw_version} version"
             )
-            return False
     else:
         gui_messenger.warning.emit(
             "Ошибка скина", "Отсутсвует подключение к интернету."
@@ -250,7 +247,6 @@ def download_injector(raw_version, minecraft_directory, no_internet_connection):
         logging.warning(
             "Warning message showed in download_injector: skin error, no internet connection"
         )
-        return False
 
 
 def resolve_version_name(
@@ -352,6 +348,35 @@ def install_version(
         options["gameDirectory"] = game_dir["gameDir"]
 
     if name_of_folder_with_version is not None:
+        if os.path.isfile(
+            os.path.join(
+                minecraft_directory,
+                "versions",
+                name_of_folder_with_version,
+                "injector_not_downloaded.FVL",
+            )
+        ):
+            queue.put(("status", "Загрузка injector..."))
+            if (
+                download_injector(
+                    raw_version,
+                    minecraft_directory,
+                    no_internet_connection,
+                )
+                is None
+            ):
+                os.remove(
+                    os.path.join(
+                        minecraft_directory,
+                        "versions",
+                        name_of_folder_with_version,
+                        "injector_not_downloaded.FVL",
+                    )
+                )
+                logging.debug(
+                    "Inector installed and injector_not_downloaded.FVL deleted"
+                )
+
         return name_of_folder_with_version, minecraft_directory, options
     elif not no_internet_connection and mod_loader_is_supported(
         raw_version, mod_loader
@@ -380,11 +405,23 @@ def install_version(
             ).close()
             queue.put(("status", "Загрузка injector..."))
             logging.debug("Installing injector in launch")
-            download_injector(
-                raw_version,
-                minecraft_directory,
-                no_internet_connection,
-            )
+            if (
+                download_injector(
+                    raw_version,
+                    minecraft_directory,
+                    no_internet_connection,
+                )
+                == "InjectorNotDownloaded"
+            ):
+                open(
+                    os.path.join(
+                        minecraft_directory,
+                        "versions",
+                        name_of_folder_with_version,
+                        "injector_not_downloaded.FVL",
+                    ),
+                    "w",
+                ).close()
             return name_of_folder_with_version, minecraft_directory, options
         else:
             gui_messenger.critical.emit(
@@ -584,26 +621,26 @@ class ProjectsSearch(QtWidgets.QDialog):
         }
         if profile:
             project_file_path = os.path.join(
-                self.minecraft_directory.replace("/", "\\"),
+                self.minecraft_directory,
                 "profiles",
                 profile,
                 type_to_dir[project["project_type"]],
                 project_version["filename"],
             )
             profile_info_path = os.path.join(
-                self.minecraft_directory.replace("/", "\\"),
+                self.minecraft_directory,
                 "profiles",
                 profile,
                 "profile_info.json",
             )
         else:
             project_file_path = os.path.join(
-                self.minecraft_directory.replace("/", "\\"),
+                self.minecraft_directory,
                 type_to_dir[project["project_type"]],
                 project_version["filename"],
             )
             profile_info_path = os.path.join(
-                self.minecraft_directory.replace("/", "\\"), "profile_info.json"
+                self.minecraft_directory, "profile_info.json"
             )
             if not os.path.isfile(profile_info_path):
                 with open(
@@ -831,7 +868,7 @@ class SettingsWindow(QtWidgets.QDialog):
 
     def set_game_directory(self, directory):
         if directory != "":
-            self.m_window.minecraft_directory = directory
+            self.m_window.minecraft_directory = directory.replace("/", "\\")
             self.current_minecraft_directory.setText(
                 f"Текущая папка с игрой:\n{self.m_window.minecraft_directory}"
             )
@@ -1458,7 +1495,7 @@ class MainWindow(QtWidgets.QMainWindow):
             self.saved_minecraft_directory
             if self.saved_minecraft_directory
             else minecraft_launcher_lib.utils.get_minecraft_directory()
-        )
+        ).replace("/", "\\")
         os.makedirs(os.path.join(self.minecraft_directory, "profiles"), exist_ok=True)
 
         self.versions_combobox = QtWidgets.QComboBox(self)
@@ -1549,8 +1586,10 @@ class MainWindow(QtWidgets.QMainWindow):
 
         self.access_token, self.ely_uuid = self.auto_login()
 
-        if getattr(sys, "frozen", False) and updater.is_new_version_released(
-            LAUNCHER_VERSION
+        if (
+            getattr(sys, "frozen", False)
+            and not self.no_internet_connection
+            and updater.is_new_version_released(LAUNCHER_VERSION)
         ):
             if (
                 QtWidgets.QMessageBox.information(
@@ -1574,7 +1613,7 @@ class MainWindow(QtWidgets.QMainWindow):
                     args=(sys.executable,),
                     daemon=False,
                 ).start()
-                return
+                sys.exit()
 
 
 if __name__ == "__main__":
