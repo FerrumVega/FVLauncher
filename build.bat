@@ -21,7 +21,7 @@ type THIRD_PARTY_LICENSES >> ALL_LICENSES
 
 move /Y installer_tmp.iss installer.iss >nul
 
-pyinstaller --windowed --icon=assets\minecraft_title.ico --distpath dist main.py
+pyinstaller --windowed --icon=assets\minecraft_title.ico --distpath dist FVLauncher\main.py
 if %ERRORLEVEL% neq 0 exit /b 1
 iscc installer.iss
 

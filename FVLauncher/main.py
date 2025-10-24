@@ -1,8 +1,6 @@
 import minecraft_launcher_lib
 from PySide6 import QtWidgets, QtGui
-from PySide6.QtCore import QObject, Signal, Qt, QTimer
-from xml.etree import ElementTree as ET
-import subprocess
+from PySide6.QtCore import Signal, Qt, QTimer
 import os
 import sys
 import requests
@@ -10,12 +8,13 @@ import configparser
 import uuid
 import json
 import pypresence
-import time
 import logging
-import optipy
 import multiprocessing
-import traceback
+from faker import Faker
+
+import utils
 import updater
+
 
 logging.basicConfig(
     level=logging.DEBUG,
@@ -24,77 +23,6 @@ logging.basicConfig(
     format="%(asctime)s %(levelname)s %(message)s",
 )
 logging.debug("Program started its work")
-
-app = QtWidgets.QApplication(sys.argv)
-app.setStyle(QtWidgets.QStyleFactory.create("windows11"))
-
-window_icon = QtGui.QIcon(
-    (
-        os.path.join(
-            "assets",
-            "minecraft_title.png",
-        )
-    )
-)
-
-
-class GuiMessenger(QObject):
-    warning = Signal(str, str)
-    critical = Signal(str, str)
-    info = Signal(str, str)
-    log = Signal(str, str, str)
-
-    def emit_msg(self, t, m, type, directory=None):
-        global window_icon
-        msg = QtWidgets.QMessageBox()
-        msg.setWindowTitle(t)
-        msg.setText(m)
-        msg.setWindowIcon(window_icon)
-        msg.setIcon(type)
-        if directory is not None:
-            msg.setStandardButtons(QtWidgets.QMessageBox.Yes | QtWidgets.QMessageBox.No)
-            if msg.exec() == QtWidgets.QMessageBox.Yes:
-                os.startfile(os.path.join(directory, "logs", "latest.log"))
-        else:
-            msg.exec()
-
-    def __init__(self):
-        super().__init__()
-        self.warning.connect(
-            lambda t, m: self.emit_msg(t, m, QtWidgets.QMessageBox.Warning)
-        )
-        self.critical.connect(
-            lambda t, m: self.emit_msg(t, m, QtWidgets.QMessageBox.Critical)
-        )
-        self.info.connect(
-            lambda t, m: self.emit_msg(t, m, QtWidgets.QMessageBox.Information)
-        )
-        self.log.connect(
-            lambda t, m, d: self.emit_msg(t, m, QtWidgets.QMessageBox.Critical, d)
-        )
-
-
-gui_messenger = GuiMessenger()
-
-
-def log_exception(*args):
-    logging.critical(
-        f"There was an error:\n{''.join(traceback.format_exception(*args))}"
-    )
-    gui_messenger.critical.emit(
-        "Ошибка",
-        f"Произошла непредвиденная ошибка:\n{''.join(traceback.format_exception(*args))}",
-    )
-
-
-sys.excepthook = log_exception
-
-
-def run_in_process_with_exceptions_logging(func, *args, **kwargs):
-    try:
-        func(*args, **kwargs)
-    except Exception as e:
-        log_exception(type(e), e, e.__traceback__)
 
 
 def load_config():
@@ -136,466 +64,6 @@ def load_config():
     return {key: parser["Settings"][key] for key in parser.options("Settings")}
 
 
-def download_profile_from_mrpack(minecraft_directory, mrpack_path, queue):
-    if mrpack_path:
-        profile_path = os.path.join(
-            minecraft_directory,
-            "profiles",
-            minecraft_launcher_lib.mrpack.get_mrpack_information(mrpack_path)["name"],
-        )
-        minecraft_launcher_lib.mrpack.install_mrpack(
-            mrpack_path,
-            minecraft_directory,
-            profile_path,
-            callback={"setStatus": queue.put},
-        )
-        with open(
-            os.path.join(profile_path, "profile_info.json"), "w"
-        ) as profile_info_file:
-            json.dump(
-                [
-                    {
-                        "mc_version": minecraft_launcher_lib.mrpack.get_mrpack_launch_version(
-                            mrpack_path
-                        )
-                    },
-                    [],
-                ],
-                profile_info_file,
-                indent=4,
-            )
-
-
-def prepare_installation_parameters(
-    mod_loader, nickname, ely_uuid, access_token, java_arguments
-):
-    if mod_loader != "vanilla":
-        install_type = minecraft_launcher_lib.mod_loader.get_mod_loader(
-            mod_loader
-        ).install
-    else:
-        install_type = minecraft_launcher_lib.install.install_minecraft_version
-    options = {
-        "username": nickname,
-        "uuid": ely_uuid if ely_uuid else str(uuid.uuid4().hex),
-        "token": access_token,
-        "jvmArguments": java_arguments,
-    }
-    return install_type, options
-
-
-def download_injector(raw_version, minecraft_directory, no_internet_connection):
-    if not no_internet_connection:
-        json_path = os.path.join(
-            minecraft_directory,
-            "versions",
-            raw_version,
-            f"{raw_version}.json",
-        )
-        authlib_version = None
-        with open(json_path) as file_with_downloads:
-            for lib in json.load(file_with_downloads)["libraries"]:
-                if lib["name"].startswith("com.mojang:authlib:"):
-                    authlib_version = lib["name"].split(":")[-1]
-                    break
-        if authlib_version is not None:
-            base_url = "https://maven.ely.by/releases/by/ely/authlib"
-            for maven_version in ET.fromstring(
-                requests.get(f"{base_url}/maven-metadata.xml").text
-            ).findall("./versioning/versions/version")[::-1]:
-                if authlib_version in maven_version.text:
-                    with open(
-                        os.path.join(
-                            minecraft_directory,
-                            "libraries",
-                            "com",
-                            "mojang",
-                            "authlib",
-                            authlib_version,
-                            f"authlib-{authlib_version}.jar",
-                        ),
-                        "wb",
-                    ) as jar:
-                        jar.write(
-                            requests.get(
-                                f"{base_url}/{maven_version.text}/authlib-{maven_version.text}.jar"
-                            ).content
-                        )
-                        logging.debug(f"Installed patched authlib {maven_version.text}")
-                    break
-            else:
-                gui_messenger.warning.emit(
-                    "Ошибка скина",
-                    "Для данной версии ещё не вышла патченая authlib, обычна она выходит в течении пяти дней после выхода версии.",
-                )
-                logging.warning(
-                    f"Warning message showed in download_injector: skin error, there is not patched authlib for {raw_version} version"
-                )
-                return "InjectorNotDownloaded"
-        else:
-            gui_messenger.warning.emit(
-                "Ошибка скина",
-                "На данной версии нет authlib, скины не поддерживаются.",
-            )
-            logging.warning(
-                f"Warning message showed in download_injector: skins not supported on {raw_version} version"
-            )
-    else:
-        gui_messenger.warning.emit(
-            "Ошибка скина", "Отсутсвует подключение к интернету."
-        )
-        logging.warning(
-            "Warning message showed in download_injector: skin error, no internet connection"
-        )
-
-
-def resolve_version_name(
-    version, mod_loader, minecraft_directory, ignore_installed_file=False
-):
-    for v in sorted(
-        minecraft_launcher_lib.utils.get_installed_versions(minecraft_directory),
-        reverse=True,
-        key=lambda s: s["id"],
-    ):
-        folder_name = v["id"]
-        if (
-            os.path.isfile(
-                os.path.join(
-                    minecraft_directory, "versions", folder_name, "installed.FVL"
-                )
-            )
-            or ignore_installed_file
-        ):
-            if mod_loader == "vanilla" and folder_name == version:
-                return folder_name, {}
-            elif mod_loader != "vanilla":
-                with open(
-                    os.path.join(
-                        minecraft_directory,
-                        "versions",
-                        folder_name,
-                        f"{folder_name}.json",
-                    )
-                ) as version_info:
-                    if (
-                        mod_loader in folder_name
-                        and json.load(version_info)["inheritsFrom"] == version
-                    ):
-                        return folder_name, {}
-    else:
-        for v in os.listdir(os.path.join(minecraft_directory, "profiles")):
-            profile_info_path = os.path.join(
-                minecraft_directory,
-                "profiles",
-                v,
-                "profile_info.json",
-            )
-            if version == v and os.path.isfile(profile_info_path):
-                with open(profile_info_path) as profile_info_file:
-                    vanilla_version = json.load(profile_info_file)[0]["mc_version"]
-                    if resolve_version_name(
-                        vanilla_version, mod_loader, minecraft_directory
-                    )[0]:
-                        return vanilla_version, {
-                            "gameDir": os.path.join(minecraft_directory, "profiles", v)
-                        }
-                    else:
-                        # ТОГДА КАЧАЕМ
-                        return None, {}
-        else:
-            return None, {}
-
-
-def install_version(
-    install_type,
-    options,
-    minecraft_directory,
-    mod_loader,
-    raw_version,
-    queue,
-    no_internet_connection,
-):
-    progress = 0
-    max_progress = 100
-    percents = 0
-    last_track_progress_call_time = time.time()
-    last_progress_info = ""
-
-    def track_progress(value, type):
-        nonlocal progress, max_progress, last_track_progress_call_time, last_progress_info, percents
-        if time.time() - last_track_progress_call_time > 1 or (
-            type == "progress_info" and value != last_progress_info
-        ):
-            if type != "progress_info":
-                if type == "progress":
-                    progress = value
-                elif type == "max":
-                    max_progress = value
-                try:
-                    percents = min(100.0, progress / max_progress * 100)
-                except ZeroDivisionError:
-                    percents = 0
-                queue.put(("progressbar", percents))
-                last_track_progress_call_time = time.time()
-            else:
-                last_progress_info = value
-                queue.put(("status", value))
-
-    name_of_folder_with_version, game_dir = resolve_version_name(
-        raw_version, mod_loader, minecraft_directory
-    )
-    if game_dir:
-        options["gameDirectory"] = game_dir["gameDir"]
-
-    if name_of_folder_with_version is not None:
-        if os.path.isfile(
-            os.path.join(
-                minecraft_directory,
-                "versions",
-                name_of_folder_with_version,
-                "injector_not_downloaded.FVL",
-            )
-        ):
-            queue.put(("status", "Загрузка injector..."))
-            if (
-                download_injector(
-                    raw_version,
-                    minecraft_directory,
-                    no_internet_connection,
-                )
-                is None
-            ):
-                os.remove(
-                    os.path.join(
-                        minecraft_directory,
-                        "versions",
-                        name_of_folder_with_version,
-                        "injector_not_downloaded.FVL",
-                    )
-                )
-                logging.debug(
-                    "Inector installed and injector_not_downloaded.FVL deleted"
-                )
-
-        return name_of_folder_with_version, minecraft_directory, options
-    elif not no_internet_connection and mod_loader_is_supported(
-        raw_version, mod_loader
-    ):
-        install_type(
-            raw_version,
-            minecraft_directory,
-            callback={
-                "setProgress": lambda value: track_progress(value, "progress"),
-                "setMax": lambda value: track_progress(value, "max"),
-                "setStatus": lambda value: track_progress(value, "progress_info"),
-            },
-        )
-        name_of_folder_with_version = resolve_version_name(
-            raw_version, mod_loader, minecraft_directory, ignore_installed_file=True
-        )[0]
-        if name_of_folder_with_version is not None:
-            open(
-                os.path.join(
-                    minecraft_directory,
-                    "versions",
-                    name_of_folder_with_version,
-                    "installed.FVL",
-                ),
-                "w",
-            ).close()
-            queue.put(("status", "Загрузка injector..."))
-            logging.debug("Installing injector in launch")
-            if (
-                download_injector(
-                    raw_version,
-                    minecraft_directory,
-                    no_internet_connection,
-                )
-                == "InjectorNotDownloaded"
-            ):
-                open(
-                    os.path.join(
-                        minecraft_directory,
-                        "versions",
-                        name_of_folder_with_version,
-                        "injector_not_downloaded.FVL",
-                    ),
-                    "w",
-                ).close()
-            return name_of_folder_with_version, minecraft_directory, options
-        else:
-            gui_messenger.critical.emit(
-                "Ошибка загрузки",
-                "Произошла непредвиденная ошибка во время загрузки версии.",
-            )
-            queue.put(("start_button", True))
-            logging.error(
-                f"Error message showed in install_version: error after download {raw_version} version"
-            )
-            return None
-    elif no_internet_connection:
-        gui_messenger.critical.emit(
-            "Ошибка подключения",
-            "Вы в оффлайн-режиме. Версия отсутсвует на вашем компьютере, загрузка невозможна. Попробуйте перезапустить лаунчер.",
-        )
-        queue.put(("start_button", True))
-        logging.error(
-            f"Error message showed in install_version: cannot download version because there is not internet connection"
-        )
-    else:
-        gui_messenger.critical.emit(
-            "Ошибка",
-            "Для данной версии нет выбранного вами загрузчика модов.",
-        )
-        queue.put(("start_button", True))
-        logging.error(
-            f"Error message showed in install_version: mod loader {mod_loader} is not supported on the {raw_version} version"
-        )
-
-
-def download_optifine(optifine_path, raw_version, queue, no_internet_connection):
-    if not no_internet_connection:
-        url = None
-        optifine_info = optipy.getVersion(raw_version)
-        if optifine_info is not None:
-            url = optifine_info[raw_version][0]["url"]
-            queue.put(("status", "Загрузка optifine..."))
-            logging.debug("Installing optifine in download_optifine")
-            with open(optifine_path, "wb") as optifine_jar:
-                optifine_jar.write(requests.get(url).content)
-        else:
-            gui_messenger.warning.emit(
-                "Запуск без optifine",
-                "Optifine недоступен на выбранной вами версии.",
-            )
-            logging.warning(
-                f"Warning message showed in download_optifine: optifine is not support on {raw_version} version"
-            )
-    else:
-        gui_messenger.warning.emit(
-            "Ошибка optifine", "Отсутсвует подключение к интернету."
-        )
-        logging.warning(
-            f"Warning message showed in download_optifine: optifine error, no internet connection"
-        )
-
-
-def launch(
-    minecraft_directory,
-    mod_loader,
-    raw_version,
-    optifine,
-    show_console,
-    nickname,
-    ely_uuid,
-    access_token,
-    java_arguments,
-    queue,
-    no_internet_connection,
-):
-    install_type, options = prepare_installation_parameters(
-        mod_loader, nickname, ely_uuid, access_token, java_arguments
-    )
-
-    launch_info = install_version(
-        install_type,
-        options,
-        minecraft_directory,
-        mod_loader,
-        raw_version,
-        queue,
-        no_internet_connection,
-    )
-    version, minecraft_directory, options = launch_info
-
-    options["jvmArguments"] = options["jvmArguments"].split()
-    queue.put(("progressbar", 100))
-
-    optifine_path = os.path.join(minecraft_directory, "mods", "optifine.jar")
-
-    if not os.path.isdir(os.path.join(minecraft_directory, "mods")):
-        os.mkdir(os.path.join(minecraft_directory, "mods"))
-    if os.path.isfile(optifine_path):
-        os.remove(optifine_path)
-    if optifine and mod_loader == "forge":
-        download_optifine(optifine_path, raw_version, queue, no_internet_connection)
-    logging.debug(f"Launching {version} version")
-    minecraft_process = subprocess.Popen(
-        minecraft_launcher_lib.command.get_minecraft_command(
-            version, minecraft_directory, options
-        ),
-        cwd=minecraft_directory,
-        **({"creationflags": subprocess.CREATE_NO_WINDOW} if not show_console else {}),
-    )
-    queue.put(("status", "Игра запущена"))
-    logging.debug(f"Minecraft process started on {version} version")
-    queue.put(("start_button", True))
-    start_rich_presence(raw_version, True, minecraft_process)
-    minecraft_return_code = minecraft_process.wait()
-    if minecraft_return_code != 0:
-        gui_messenger.log.emit(
-            "Игра была закрыта с ошибкой",
-            f"Minecraft вернул ошибку (крашнулся). Код ошибки: {minecraft_return_code}<br>"
-            "Вы хотите открыть лог?",
-            minecraft_directory,
-        )
-
-
-def mod_loader_is_supported(raw_version, mod_loader):
-    if mod_loader != "vanilla":
-        if minecraft_launcher_lib.mod_loader.get_mod_loader(
-            mod_loader
-        ).is_minecraft_version_supported(raw_version):
-            return True
-        else:
-            return False
-    else:
-        return True
-
-
-def start_rich_presence(
-    raw_version=None,
-    minecraft=False,
-    minecraft_process=None,
-):
-    global rpc
-    try:
-        if not minecraft:
-            rpc.update(
-                details="В меню",
-                start=start_launcher_time,
-                large_image="minecraft_title",
-                large_text="FVLauncher",
-                buttons=[
-                    {
-                        "label": "Скачать лаунчер",
-                        "url": "https://github.com/FerrumVega/FVLauncher",
-                    }
-                ],
-            )
-        else:
-            rpc.update(
-                pid=minecraft_process.pid,
-                state=(f"Играет на версии {raw_version}"),
-                details="В Minecraft",
-                start=start_launcher_time,
-                large_image="minecraft_title",
-                large_text="FVLauncher",
-                small_image="grass_block",
-                small_text="В игре",
-                buttons=[
-                    {
-                        "label": "Скачать лаунчер",
-                        "url": "https://github.com/FerrumVega/FVLauncher",
-                    }
-                ],
-            )
-            minecraft_process.wait()
-            start_rich_presence()
-    except:
-        pass
-
-
 class ClickableLabel(QtWidgets.QLabel):
     clicked = Signal()
 
@@ -612,7 +80,57 @@ class ProjectsSearch(QtWidgets.QDialog):
         self.minecraft_directory = minecraft_directory
         self._make_ui()
 
-    def download_project_process(self, project_version, project, profile):
+    def _update_ui_from_queue(self):
+        while not self.queue.empty():
+            self.progressbar.setValue(self.queue.get_nowait())
+
+    def download_project_process(self, project_version, project, profile, mc_version):
+        if profile:
+            with open(
+                os.path.join(
+                    self.minecraft_directory, "profiles", profile, "profile_info.json"
+                ),
+                "r",
+                encoding="utf-8",
+            ) as profile_info_file:
+                profile_info = json.load(profile_info_file)
+            with open(
+                os.path.join(
+                    self.minecraft_directory,
+                    "versions",
+                    profile_info[0]["mc_version"],
+                    f"{profile_info[0]['mc_version']}.json",
+                ),
+                "r",
+                encoding="utf-8",
+            ) as mc_version_file:
+                try:
+                    inherits_from = json.load(mc_version_file).get(
+                        "inheritsFrom", profile_info[0]["mc_version"]
+                    )
+                    if inherits_from != mc_version:
+                        if (
+                            QtWidgets.QMessageBox.warning(
+                                self.profiles_window,
+                                "Ошибка скачивания проекта",
+                                f"Версия игры профиля не совпадает с версией игры проекта, который вы выбрали\nВерсия игры проекта: {mc_version}\nВерсия игры сборки: {inherits_from}.\nВы уверены, что хотите установить проект на этот профиль?",
+                                QtWidgets.QMessageBox.Yes | QtWidgets.QMessageBox.No,
+                            )
+                            != QtWidgets.QMessageBox.Yes
+                        ):
+                            return
+                except KeyError:
+                    if project["project_type"] == "mod" and (
+                        QtWidgets.QMessageBox.warning(
+                            self.profiles_window,
+                            "Ошибка скачивания мода",
+                            "Вероятнее всего, вы пытаетесь установить мод на ванильный профиль. Вы уверены, что хотите установить мод на этот профиль?",
+                            QtWidgets.QMessageBox.Yes | QtWidgets.QMessageBox.No,
+                        )
+                        != QtWidgets.QMessageBox.Yes
+                    ):
+                        return
+
         type_to_dir = {
             "mod": "mods",
             "resourcepack": "resourcepacks",
@@ -650,34 +168,33 @@ class ProjectsSearch(QtWidgets.QDialog):
 
         os.makedirs(os.path.dirname(project_file_path), exist_ok=True)
 
-        with requests.get(project_version["url"], stream=True) as r:
-            r.raise_for_status()
-            with open(
-                project_file_path,
-                "wb",
-            ) as project_file:
-                bytes_downloaded = 0
-                project_size = project_version["size"]
-                chunk_size = int(project_size / 100)
-                for chunk in r.iter_content(chunk_size=chunk_size):
-                    if chunk:
-                        bytes_downloaded += chunk_size
-                        print(min(100, int(bytes_downloaded / project_size * 100)))
-                        project_file.write(chunk)
-        with open(profile_info_path, "r", encoding="utf-8") as profile_info_file:
-            profile_info = json.load(profile_info_file)
-        if not [project_version, project] in profile_info[1]:
-            profile_info[1].append([project_version, project])
-            with open(profile_info_path, "w", encoding="utf-8") as profile_info_file:
-                json.dump(profile_info, profile_info_file, indent=4)
-        gui_messenger.info.emit(
-            "Проект установлен",
-            f"Проект {project['title']} был успешно установлен.",
-        )
+        if __name__ == "__main__":
+            self.queue = multiprocessing.Queue()
+            self.download_project_file_process = multiprocessing.Process(
+                target=utils.run_in_process_with_exceptions_logging,
+                args=(
+                    utils.only_project_install,
+                    project_version,
+                    project,
+                    project_file_path,
+                    profile_info_path,
+                    self.queue,
+                ),
+                daemon=True,
+            )
+            self.download_project_file_process.start()
+            self.timer = QTimer()
+            self.timer.timeout.connect(self._update_ui_from_queue)
+            self.timer.start(200)
 
-    def install_project(self, project_version, project):
+    def install_project(self, project, mc_version, loader):
+        with requests.get(
+            f'https://api.modrinth.com/v2/project/{project["id"]}/version?game_versions=["{mc_version}"]&loaders=["{loader}"]'
+        ) as r:
+            r.raise_for_status()
+            project_version = json.loads(r.text)[0]["files"][0]
         profiles = []
-        if project["project_type"] in ["plugin", "modpack"]:
+        if project["project_type"] not in ["mod", "shader", "datapack", "resourcepack"]:
             QtWidgets.QMessageBox.critical(
                 self.install_project_window,
                 "Ошибка",
@@ -694,6 +211,12 @@ class ProjectsSearch(QtWidgets.QDialog):
         start_y_coord = 30
         buttons = []
 
+        self.progressbar = QtWidgets.QProgressBar(
+            self.profiles_window, textVisible=False
+        )
+        self.progressbar.setFixedWidth(260)
+        self.progressbar.move(20, 430)
+
         for profile in profiles:
             download_button = QtWidgets.QPushButton(self.profiles_window)
             download_button.setText(profile)
@@ -703,7 +226,7 @@ class ProjectsSearch(QtWidgets.QDialog):
             start_y_coord += 30
             download_button.clicked.connect(
                 lambda *args, cur_profile=profile: self.download_project_process(
-                    project_version, project, cur_profile
+                    project_version, project, cur_profile, mc_version
                 )
             )
         download_button = QtWidgets.QPushButton(self.profiles_window)
@@ -714,7 +237,7 @@ class ProjectsSearch(QtWidgets.QDialog):
         start_y_coord += 30
         download_button.clicked.connect(
             lambda *args, cur_profile="": self.download_project_process(
-                project_version, project, cur_profile
+                project_version, project, cur_profile, mc_version
             )
         )
 
@@ -729,31 +252,21 @@ class ProjectsSearch(QtWidgets.QDialog):
         start_y_coord = 30
 
         for loader in project["loaders"]:
-            versions = json.loads(
-                requests.get(
-                    f'https://api.modrinth.com/v2/project/{project["id"]}/version?game_versions=["{mc_version}"]&loaders=["{loader}"]'
-                ).text
-            )
-            version = versions[0] if versions else None
-            if version is not None:
-                download_button = QtWidgets.QPushButton(self.install_project_window)
-                download_button.setText(loader)
-                download_button.setFixedWidth(240)
-                download_button.move(30, start_y_coord)
-                start_y_coord += 30
-                download_button.clicked.connect(
-                    lambda *args, cur_version=version["files"][0]: self.install_project(
-                        cur_version,
-                        project,
-                    )
+            download_button = QtWidgets.QPushButton(self.install_project_window)
+            download_button.setText(loader)
+            download_button.setFixedWidth(240)
+            download_button.move(30, start_y_coord)
+            start_y_coord += 30
+            download_button.clicked.connect(
+                lambda *args, current_loader=loader: self.install_project(
+                    project, mc_version, current_loader
                 )
+            )
 
         self.install_project_window.show()
 
     def show_versions(self, project):
         mc_versions = project["game_versions"]
-        while self.versions_layout.count():
-            self.versions_layout.takeAt(0).widget().deleteLater()
         for mc_version in mc_versions[::-1]:
             w = ClickableLabel(text=mc_version)
             w.clicked.connect(
@@ -767,9 +280,16 @@ class ProjectsSearch(QtWidgets.QDialog):
             self.versions_layout.addWidget(w)
 
     def show_project(self, id):
-        project = json.loads(
-            requests.get(f"https://api.modrinth.com/v2/project/{id}").text
-        )
+        with requests.get(f"https://api.modrinth.com/v2/project/{id}") as r:
+            r.raise_for_status()
+            project = json.loads(r.text)
+
+        type_to_russian_name = {
+            "mod": "мод",
+            "resourcepack": "ресурспак",
+            "datapack": "датапак",
+            "shader": "шейдер",
+        }
 
         self.project_info_window = QtWidgets.QDialog(self)
         self.project_info_window.setModal(True)
@@ -779,12 +299,16 @@ class ProjectsSearch(QtWidgets.QDialog):
         self.project_title = QtWidgets.QLabel(self.project_info_window)
         self.project_title.move(20, 20)
         self.downloads = f"{project['downloads']:_}".replace("_", " ")
-        self.project_title.setText(f"{project['title']} ({self.downloads} скачиваний)")
+        self.project_title.setText(
+            f"{project['title']} ({type_to_russian_name.get(project['project_type'], "проект").capitalize()} с {self.downloads} скачиваниями)"
+        )
         self.project_title.setAlignment(Qt.AlignCenter)
         self.project_title.setFixedWidth(260)
 
         self.icon = QtGui.QPixmap()
-        self.icon.loadFromData(requests.get(project["icon_url"]).content)
+        with requests.get(project["icon_url"]) as r:
+            r.raise_for_status()
+            self.icon.loadFromData(r.content)
         self.project_icon = QtWidgets.QLabel(self.project_info_window)
         self.icon = self.icon.scaled(100, 100)
         self.project_icon.setPixmap(self.icon)
@@ -815,9 +339,9 @@ class ProjectsSearch(QtWidgets.QDialog):
     def search(self, query):
         while self.p_layout.count():
             self.p_layout.takeAt(0).widget().deleteLater()
-        info = json.loads(
-            requests.get(f"https://api.modrinth.com/v2/search?query={query}").text
-        )
+        with requests.get(f"https://api.modrinth.com/v2/search?query={query}") as r:
+            r.raise_for_status()
+            info = json.loads(r.text)
         for project in info["hits"]:
             w = ClickableLabel(text=project["title"])
             w.clicked.connect(
@@ -1002,7 +526,9 @@ class SettingsWindow(QtWidgets.QDialog):
         self.current_minecraft_directory.setAlignment(Qt.AlignCenter)
 
         self.launcher_version_label = QtWidgets.QLabel(self)
-        self.launcher_version_label.setText(f"Версия лаунчера: {LAUNCHER_VERSION}")
+        self.launcher_version_label.setText(
+            f"Версия лаунчера: {utils.LAUNCHER_VERSION}"
+        )
         self.launcher_version_label.move(25, 450)
         self.launcher_version_label.setFixedWidth(250)
         self.launcher_version_label.setAlignment(Qt.AlignCenter)
@@ -1020,7 +546,7 @@ class AccountWindow(QtWidgets.QDialog):
     def _make_ui(self):
 
         def login():
-            self.data = requests.post(
+            with requests.post(
                 "https://authserver.ely.by/auth/authenticate",
                 json={
                     "username": self.ely_username.text(),
@@ -1028,10 +554,11 @@ class AccountWindow(QtWidgets.QDialog):
                     "clientToken": self.m_window.client_token,
                     "requestUser": True,
                 },
-            )
+            ) as r:
+                self.data = r
             if self.sign_status_label.text() == "Статус: вы вошли в аккаунт":
-                gui_messenger.critical.emit(
-                    "Ошибка входа", "Сначала выйдите из аккаунта"
+                QtWidgets.QMessageBox.critical(
+                    self, "Ошибка входа", "Сначала выйдите из аккаунта"
                 )
                 logging.error(
                     f"Error message showed in login: login error, sign out before login"
@@ -1039,8 +566,8 @@ class AccountWindow(QtWidgets.QDialog):
             elif self.data.status_code == 200:
                 self.m_window.access_token = self.data.json()["accessToken"]
                 self.m_window.ely_uuid = self.data.json()["user"]["id"]
-                gui_messenger.info.emit(
-                    "Поздравляем!", "Теперь вы будете видеть свой скин в игре."
+                QtWidgets.QMessageBox.information(
+                    self, "Поздравляем!", "Теперь вы будете видеть свой скин в игре."
                 )
                 logging.info(
                     f"Info message showed in login: ely skin will be shown in game"
@@ -1052,7 +579,8 @@ class AccountWindow(QtWidgets.QDialog):
                 )
                 self.m_window.nickname_entry.setReadOnly(True)
             else:
-                gui_messenger.critical.emit(
+                QtWidgets.QMessageBox.critical(
+                    self,
                     "Ошибка входа",
                     f"Текст ошибки: {self.data.json()['errorMessage']}",
                 )
@@ -1061,24 +589,27 @@ class AccountWindow(QtWidgets.QDialog):
                 )
 
         def signout():
-            self.data = requests.post(
+            with requests.post(
                 "https://authserver.ely.by/auth/invalidate",
                 json={
                     "accessToken": self.m_window.access_token,
                     "clientToken": self.m_window.client_token,
                 },
-            )
+            ) as r:
+                self.data = r
             self.m_window.access_token = ""
             self.m_window.ely_uuid = ""
             if self.data.status_code == 200:
-                gui_messenger.info.emit("Выход из аккаунта", "Вы вышли из аккаунта")
+                QtWidgets.QMessageBox.information(
+                    self, "Выход из аккаунта", "Вы вышли из аккаунта"
+                )
                 logging.info(f"Info message showed in signout: successfully signed out")
                 self.m_window.nickname_entry.setReadOnly(False)
                 self.m_window.sign_status = "Статус: вы вышли из аккаунта"
                 self.sign_status_label.setText(self.m_window.sign_status)
             else:
-                gui_messenger.critical.emit(
-                    "Ошибка выхода", self.data.json()["errorMessage"]
+                QtWidgets.QMessageBox.critical(
+                    self, "Ошибка выхода", self.data.json()["errorMessage"]
                 )
                 logging.error(
                     f"Error message showed in signout: sign out error, {self.data.json()['errorMessage']}"
@@ -1143,8 +674,13 @@ class ProfilesWindow(QtWidgets.QDialog):
         if __name__ == "__main__":
             self.queue = multiprocessing.Queue()
             self.import_mrpack_process = multiprocessing.Process(
-                target=download_profile_from_mrpack,
-                args=(self.m_window.minecraft_directory, mrpack_path, self.queue),
+                target=utils.run_in_process_with_exceptions_logging,
+                args=(
+                    utils.download_profile_from_mrpack,
+                    self.m_window.minecraft_directory,
+                    mrpack_path,
+                    self.queue,
+                ),
                 daemon=True,
             )
             self.import_mrpack_process.start()
@@ -1155,55 +691,94 @@ class ProfilesWindow(QtWidgets.QDialog):
     def create_own_profile(self):
 
         def create_folder():
-            profile_path = os.path.join(
-                self.m_window.minecraft_directory,
-                "profiles",
-                self.profile_name_entry.text(),
-            )
-            os.makedirs(profile_path, exist_ok=True)
-            with open(
-                os.path.join(profile_path, "profile_info.json"), "w"
-            ) as profile_info_file:
-                json.dump(
-                    [
-                        {"mc_version": self.profile_version_entry.text()},
-                        [],
-                    ],
-                    profile_info_file,
-                    indent=4,
+            version_folder_name = os.path.basename(self.profile_version_entry.text())
+            profile_name = self.profile_name_entry.text()
+            if profile_name and version_folder_name:
+                profile_path = os.path.join(
+                    self.m_window.minecraft_directory,
+                    "profiles",
+                    profile_name,
                 )
-            gui_messenger.info.emit(
-                "Создание папки профиля",
-                f"Папка профиль успешно создана по пути {profile_path}",
-            )
-            self.m_window.show_versions(
-                self.m_window,
-                self.m_window.show_old_alphas,
-                self.m_window.show_old_betas,
-                self.m_window.show_snapshots,
-                self.m_window.show_releases,
-            )
+                os.makedirs(profile_path, exist_ok=True)
+                with open(
+                    os.path.join(profile_path, "profile_info.json"), "w"
+                ) as profile_info_file:
+                    json.dump(
+                        [
+                            {"mc_version": version_folder_name},
+                            [],
+                        ],
+                        profile_info_file,
+                        indent=4,
+                    )
+                QtWidgets.QMessageBox.information(
+                    self,
+                    "Создание папки профиля",
+                    f"Папка профиль успешно создана по пути {profile_path}",
+                )
+                self.m_window.show_versions(
+                    self.m_window,
+                    self.m_window.show_old_alphas,
+                    self.m_window.show_old_betas,
+                    self.m_window.show_snapshots,
+                    self.m_window.show_releases,
+                )
+            else:
+                QtWidgets.QMessageBox.critical(
+                    self,
+                    "Ошибка создания профиля",
+                    "Укажите название профиля и выберите папку версии",
+                )
 
         self.create_own_profile_window = QtWidgets.QDialog(self)
         self.create_own_profile_window.setModal(True)
         self.create_own_profile_window.setWindowTitle("Создание папки профиля")
-        self.create_own_profile_window.setFixedSize(200, 150)
+        self.create_own_profile_window.setFixedSize(300, 150)
 
         self.profile_name_entry = QtWidgets.QLineEdit(self.create_own_profile_window)
-        self.profile_name_entry.setFixedWidth(180)
+        self.profile_name_entry.setFixedWidth(240)
         self.profile_name_entry.setPlaceholderText("Название профиля")
         self.profile_name_entry.move(10, 20)
 
+        self.random_profile_name_button = QtWidgets.QPushButton(
+            self.create_own_profile_window
+        )
+        self.random_profile_name_button.setFixedWidth(30)
+        self.random_profile_name_button.setText("🎲")
+        self.random_profile_name_button.move(260, 20)
+        self.random_profile_name_button.clicked.connect(
+            lambda: self.profile_name_entry.setText(
+                Faker().word(part_of_speech="adjective").capitalize()
+                + Faker().word(part_of_speech="noun").capitalize()
+            )
+        )
+
         self.profile_version_entry = QtWidgets.QLineEdit(self.create_own_profile_window)
-        self.profile_version_entry.setFixedWidth(180)
-        self.profile_version_entry.setPlaceholderText("Название папки версии")
+        self.profile_version_entry.setFixedWidth(240)
+        self.profile_version_entry.setPlaceholderText("Путь к папке версии")
         self.profile_version_entry.move(10, 50)
+
+        self.choose_version_folder_button = QtWidgets.QPushButton(
+            self.create_own_profile_window
+        )
+        self.choose_version_folder_button.setFixedWidth(30)
+        self.choose_version_folder_button.setText("📂")
+        self.choose_version_folder_button.move(260, 50)
+        self.choose_version_folder_button.clicked.connect(
+            lambda: self.profile_version_entry.setText(
+                QtWidgets.QFileDialog.getExistingDirectory(
+                    self.create_own_profile_window,
+                    "Выбор папки версии",
+                    os.path.join(self.m_window.minecraft_directory, "versions"),
+                ).replace("/", "\\")
+            )
+        )
 
         self.create_own_profile_button = QtWidgets.QPushButton(
             self.create_own_profile_window
         )
-        self.create_own_profile_button.setFixedWidth(90)
-        self.create_own_profile_button.move(55, 80)
+        self.create_own_profile_button.setFixedWidth(120)
+        self.create_own_profile_button.move(90, 80)
         self.create_own_profile_button.setText("Создать профиль")
         self.create_own_profile_button.clicked.connect(create_folder)
 
@@ -1241,7 +816,7 @@ class MainWindow(QtWidgets.QMainWindow):
     def check_java(self):
         self.java_path = minecraft_launcher_lib.utils.get_java_executable()
         if self.java_path == "java" or self.java_path == "javaw":
-            gui_messenger.critical.emit(
+            utils.gui_messenger.critical.emit(
                 "Java не найдена",
                 "На вашем компьютере отсутствует java, загрузите её с github лаунчера.",
             )
@@ -1292,13 +867,6 @@ class MainWindow(QtWidgets.QMainWindow):
         self.saved_minecraft_directory = saved_minecraft_directory
 
         super().__init__()
-        self.client_token = str(uuid.uuid5(uuid.NAMESPACE_DNS, str(uuid.getnode())))
-        rpc = pypresence.Presence(CLIENT_ID)
-        try:
-            rpc.connect()
-        except:
-            pass
-        start_rich_presence()
         if self.check_java():
             self.save_config_on_close = True
             self._make_ui()
@@ -1396,9 +964,9 @@ class MainWindow(QtWidgets.QMainWindow):
 
             self.queue = multiprocessing.Queue()
             self.minecraft_download_process = multiprocessing.Process(
-                target=run_in_process_with_exceptions_logging,
+                target=utils.run_in_process_with_exceptions_logging,
                 args=(
-                    launch,
+                    utils.launch,
                     self.minecraft_directory,
                     self.mod_loader,
                     self.raw_version,
@@ -1421,19 +989,21 @@ class MainWindow(QtWidgets.QMainWindow):
     def auto_login(self):
         if not self.no_internet_connection:
             if self.saved_ely_uuid and self.saved_access_token:
-                valid_token_info = requests.post(
+                with requests.post(
                     "https://authserver.ely.by/auth/validate",
                     json={"accessToken": self.saved_access_token},
-                )
+                ) as r:
+                    valid_token_info = r
                 if valid_token_info.status_code != 200:
-                    refreshed_token_info = requests.post(
+                    with requests.post(
                         "https://authserver.ely.by/auth/refresh",
                         json={
                             "accessToken": self.saved_access_token,
                             "clientToken": self.client_token,
                             "requestUser": True,
                         },
-                    )
+                    ) as r:
+                        refreshed_token_info = r
                     if refreshed_token_info.status_code != 200:
                         access_token = ""
                         ely_uuid = ""
@@ -1474,7 +1044,7 @@ class MainWindow(QtWidgets.QMainWindow):
 
         self.setWindowTitle("FVLauncher")
         self.sign_status = ""
-        self.setWindowIcon(window_icon)
+        self.setWindowIcon(utils.window_icon)
 
         self.setFixedSize(300, 500)
 
@@ -1579,17 +1149,26 @@ class MainWindow(QtWidgets.QMainWindow):
         self.show()
 
         try:
-            requests.get("https://google.com")
+            requests.get("https://google.com").raise_for_status()
             self.no_internet_connection = False
         except requests.exceptions.ConnectionError:
             self.no_internet_connection = True
+
+        self.client_token = str(uuid.uuid5(uuid.NAMESPACE_DNS, str(uuid.getnode())))
+        rpc = pypresence.Presence(utils.CLIENT_ID)
+        if not self.no_internet_connection:
+            try:
+                rpc.connect()
+            except:
+                pass
+        utils.start_rich_presence()
 
         self.access_token, self.ely_uuid = self.auto_login()
 
         if (
             getattr(sys, "frozen", False)
             and not self.no_internet_connection
-            and updater.is_new_version_released(LAUNCHER_VERSION)
+            and updater.is_new_version_released(utils.LAUNCHER_VERSION)
         ):
             if (
                 QtWidgets.QMessageBox.information(
@@ -1618,10 +1197,6 @@ class MainWindow(QtWidgets.QMainWindow):
 
 if __name__ == "__main__":
     multiprocessing.freeze_support()
-
-    CLIENT_ID = "1399428342117175497"
-    LAUNCHER_VERSION = "v5.2"
-    start_launcher_time = int(time.time())
     config = load_config()
     window = MainWindow(
         config["version"],
@@ -1638,4 +1213,4 @@ if __name__ == "__main__":
         config["show_releases"],
         config["minecraft_directory"],
     )
-    sys.exit(app.exec())
+    sys.exit(utils.app.exec())
