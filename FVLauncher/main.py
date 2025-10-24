@@ -300,7 +300,7 @@ class ProjectsSearch(QtWidgets.QDialog):
         self.project_title.move(20, 20)
         self.downloads = f"{project['downloads']:_}".replace("_", " ")
         self.project_title.setText(
-            f"{project['title']} ({type_to_russian_name.get(project['project_type'], "проект").capitalize()} с {self.downloads} скачиваниями)"
+            f"{project['title']} ({type_to_russian_name.get(project['project_type'], 'проект').capitalize()} с {self.downloads} скачиваниями)"
         )
         self.project_title.setAlignment(Qt.AlignCenter)
         self.project_title.setFixedWidth(260)
