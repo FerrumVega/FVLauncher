@@ -85,12 +85,17 @@ class GuiMessenger(QObject):
 gui_messenger = GuiMessenger()
 
 
-def download_profile_from_mrpack(minecraft_directory, mrpack_path, queue):
+def download_profile_from_mrpack(
+    minecraft_directory, mrpack_path, no_internet_connection, queue
+):
     if mrpack_path:
+        profile_name = minecraft_launcher_lib.mrpack.get_mrpack_information(
+            mrpack_path
+        )["name"]
         profile_path = os.path.join(
             minecraft_directory,
             "profiles",
-            minecraft_launcher_lib.mrpack.get_mrpack_information(mrpack_path)["name"],
+            profile_name,
         )
         minecraft_launcher_lib.mrpack.install_mrpack(
             mrpack_path,
@@ -113,6 +118,39 @@ def download_profile_from_mrpack(minecraft_directory, mrpack_path, queue):
                 profile_info_file,
                 indent=4,
             )
+        open(
+            os.path.join(
+                minecraft_directory,
+                "versions",
+                minecraft_launcher_lib.mrpack.get_mrpack_launch_version(mrpack_path),
+                "installed.FVL",
+            ),
+            "w",
+        ).close()
+        if (
+            download_injector(
+                minecraft_launcher_lib.mrpack.get_mrpack_information(mrpack_path)[
+                    "minecraftVersion"
+                ],
+                minecraft_directory,
+                no_internet_connection,
+            )
+            == "InjectorNotDownloaded"
+        ):
+            open(
+                os.path.join(
+                    minecraft_directory,
+                    "versions",
+                    minecraft_launcher_lib.mrpack.get_mrpack_launch_version(
+                        mrpack_path
+                    ),
+                    "injector_not_downloaded.FVL",
+                ),
+                "w",
+            ).close()
+        gui_messenger.info.emit(
+            "Сборка установлена", f"Сборка {profile_name} была успешно установлена!"
+        )
 
 
 def prepare_installation_parameters(
@@ -134,13 +172,22 @@ def prepare_installation_parameters(
 
 
 def download_injector(raw_version, minecraft_directory, no_internet_connection):
+    json_path = os.path.join(
+        minecraft_directory,
+        "versions",
+        raw_version,
+        f"{raw_version}.json",
+    )
+    if not minecraft_launcher_lib.utils.is_vanilla_version(raw_version):
+        with open(json_path) as file_with_downloads:
+            raw_version = json.load(file_with_downloads)["inheritsFrom"]
+    json_path = os.path.join(
+        minecraft_directory,
+        "versions",
+        raw_version,
+        f"{raw_version}.json",
+    )
     if not no_internet_connection:
-        json_path = os.path.join(
-            minecraft_directory,
-            "versions",
-            raw_version,
-            f"{raw_version}.json",
-        )
         authlib_version = None
         with open(json_path) as file_with_downloads:
             for lib in json.load(file_with_downloads)["libraries"]:
@@ -205,6 +252,8 @@ def download_injector(raw_version, minecraft_directory, no_internet_connection):
 def resolve_version_name(
     version, mod_loader, minecraft_directory, ignore_installed_file=False
 ):
+    other_loaders = ["fabric", "forge", "quilt", "neoforge", "vanilla"]
+    other_loaders.remove(mod_loader)
     for v in sorted(
         minecraft_launcher_lib.utils.get_installed_versions(minecraft_directory),
         reverse=True,
@@ -221,7 +270,9 @@ def resolve_version_name(
         ):
             if mod_loader == "vanilla" and folder_name == version:
                 return folder_name, {}
-            elif mod_loader != "vanilla":
+            elif mod_loader != "vanilla" and all(
+                not loader in folder_name for loader in other_loaders
+            ):
                 with open(
                     os.path.join(
                         minecraft_directory,
@@ -312,7 +363,7 @@ def install_version(
             queue.put(("status", "Загрузка injector..."))
             if (
                 download_injector(
-                    raw_version,
+                    name_of_folder_with_version,
                     minecraft_directory,
                     no_internet_connection,
                 )
@@ -360,7 +411,7 @@ def install_version(
             logging.debug("Installing injector in launch")
             if (
                 download_injector(
-                    raw_version,
+                    name_of_folder_with_version,
                     minecraft_directory,
                     no_internet_connection,
                 )

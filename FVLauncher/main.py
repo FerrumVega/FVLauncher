@@ -549,8 +549,8 @@ class AccountWindow(QtWidgets.QDialog):
             with requests.post(
                 "https://authserver.ely.by/auth/authenticate",
                 json={
-                    "username": self.ely_username.text(),
-                    "password": self.ely_password.text(),
+                    "username": self.ely_username_entry.text(),
+                    "password": self.ely_password_entry.text(),
                     "clientToken": self.m_window.client_token,
                     "requestUser": True,
                 },
@@ -619,17 +619,17 @@ class AccountWindow(QtWidgets.QDialog):
         self.setFixedSize(300, 500)
         self.setModal(True)
 
-        self.ely_username = QtWidgets.QLineEdit(self)
-        self.ely_username.setPlaceholderText("Никнейм аккаунта ely.by")
+        self.ely_username_entry = QtWidgets.QLineEdit(self)
+        self.ely_username_entry.setPlaceholderText("Никнейм аккаунта ely.by")
         self.m_window_width = self.width()
-        self.entry_width = self.ely_username.sizeHint().width()
-        self.ely_username.move((self.m_window_width - self.entry_width) // 2, 40)
+        self.entry_width = self.ely_username_entry.sizeHint().width()
+        self.ely_username_entry.move((self.m_window_width - self.entry_width) // 2, 40)
 
-        self.ely_password = QtWidgets.QLineEdit(self)
-        self.ely_password.setPlaceholderText("Пароль аккаунта ely.by")
-        self.ely_password.setEchoMode(QtWidgets.QLineEdit.EchoMode.Password)
-        self.entry_width = self.ely_password.sizeHint().width()
-        self.ely_password.move((self.m_window_width - self.entry_width) // 2, 70)
+        self.ely_password_entry = QtWidgets.QLineEdit(self)
+        self.ely_password_entry.setPlaceholderText("Пароль аккаунта ely.by")
+        self.ely_password_entry.setEchoMode(QtWidgets.QLineEdit.EchoMode.Password)
+        self.entry_width = self.ely_password_entry.sizeHint().width()
+        self.ely_password_entry.move((self.m_window_width - self.entry_width) // 2, 70)
 
         self.login_button = QtWidgets.QPushButton(self)
         self.login_button.setText("Войти в аккаунт")
@@ -679,6 +679,7 @@ class ProfilesWindow(QtWidgets.QDialog):
                     utils.download_profile_from_mrpack,
                     self.m_window.minecraft_directory,
                     mrpack_path,
+                    self.m_window.no_internet_connection,
                     self.queue,
                 ),
                 daemon=True,
@@ -693,7 +694,15 @@ class ProfilesWindow(QtWidgets.QDialog):
         def create_folder():
             version_folder_name = os.path.basename(self.profile_version_entry.text())
             profile_name = self.profile_name_entry.text()
-            if profile_name and version_folder_name:
+            version_installed = os.path.isfile(
+                os.path.join(
+                    self.m_window.minecraft_directory,
+                    "versions",
+                    version_folder_name,
+                    "installed.FVL",
+                )
+            )
+            if profile_name and version_folder_name and version_installed:
                 profile_path = os.path.join(
                     self.m_window.minecraft_directory,
                     "profiles",
@@ -722,6 +731,12 @@ class ProfilesWindow(QtWidgets.QDialog):
                     self.m_window.show_old_betas,
                     self.m_window.show_snapshots,
                     self.m_window.show_releases,
+                )
+            elif not version_installed:
+                QtWidgets.QMessageBox.critical(
+                    self,
+                    "Ошибка создания профиля",
+                    "Выбранная вами версия некорректно устанолена",
                 )
             else:
                 QtWidgets.QMessageBox.critical(
@@ -1135,16 +1150,16 @@ class MainWindow(QtWidgets.QMainWindow):
         self.download_info_label.setAlignment(Qt.AlignCenter)
 
         self.settings_button = QtWidgets.QPushButton(self)
-        self.settings_button.setText("⚙️")
+        self.settings_button.setText("Настройки")
         self.settings_button.clicked.connect(lambda: SettingsWindow(self))
         self.settings_button.move(5, 465)
-        self.settings_button.setFixedSize(30, 30)
+        self.settings_button.setFixedWidth(80)
 
         self.account_button = QtWidgets.QPushButton(self)
-        self.account_button.setText("🩻")
+        self.account_button.setText("Аккаунт")
         self.account_button.clicked.connect(lambda: AccountWindow(self))
-        self.account_button.move(265, 465)
-        self.account_button.setFixedSize(30, 30)
+        self.account_button.move(215, 465)
+        self.account_button.setFixedWidth(80)
 
         self.show()
 
@@ -1177,7 +1192,6 @@ class MainWindow(QtWidgets.QMainWindow):
                     "Вышло новое обновление лаунчера.<br>"
                     "Нажмите ОК для обновления.<br>"
                     "После загрузки инсталлера, согласитесь на внесение изменений на устройстве.<br>"
-                    "После установки, лаунчер будет автоматически перезапущен.<br>"
                     'Нажимая "OK", вы соглашаетесь с текстами лицензий, расположенных по адресам:<br>'
                     '<a href="https://raw.githubusercontent.com/FerrumVega/FVLauncher/refs/heads/main/LICENSE">https://raw.githubusercontent.com/FerrumVega/FVLauncher/refs/heads/main/LICENSE</a><br>'
                     '<a href="https://raw.githubusercontent.com/FerrumVega/FVLauncher/refs/heads/main/THIRD_PARTY_LICENSES">https://raw.githubusercontent.com/FerrumVega/FVLauncher/refs/heads/main/THIRD_PARTY_LICENSES</a>',
@@ -1189,7 +1203,6 @@ class MainWindow(QtWidgets.QMainWindow):
                 self.close()
                 multiprocessing.Process(
                     target=updater.update,
-                    args=(sys.executable,),
                     daemon=False,
                 ).start()
                 sys.exit()
