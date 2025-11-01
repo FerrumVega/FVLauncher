@@ -90,7 +90,6 @@ class ProjectsSearch(QtWidgets.QDialog):
                 os.path.join(
                     self.minecraft_directory, "profiles", profile, "profile_info.json"
                 ),
-                "r",
                 encoding="utf-8",
             ) as profile_info_file:
                 profile_info = json.load(profile_info_file)
@@ -101,7 +100,6 @@ class ProjectsSearch(QtWidgets.QDialog):
                     profile_info[0]["mc_version"],
                     f"{profile_info[0]['mc_version']}.json",
                 ),
-                "r",
                 encoding="utf-8",
             ) as mc_version_file:
                 try:
@@ -178,8 +176,8 @@ class ProjectsSearch(QtWidgets.QDialog):
                     project,
                     project_file_path,
                     profile_info_path,
-                    self.queue,
                 ),
+                kwargs={"queue": self.queue},
                 daemon=True,
             )
             self.download_project_file_process.start()
@@ -274,7 +272,7 @@ class ProjectsSearch(QtWidgets.QDialog):
                     project, current_mc_version
                 )
             )
-            w.setStyleSheet(r"QLabel::hover {color: #03D3FC}")
+            w.setStyleSheet("QLabel::hover {color: #03D3FC}")
             w.setCursor(Qt.PointingHandCursor)
             w.setToolTip("Кликните для просмотра")
             self.versions_layout.addWidget(w)
@@ -349,7 +347,7 @@ class ProjectsSearch(QtWidgets.QDialog):
                     current_project_id
                 )
             )
-            w.setStyleSheet(r"QLabel::hover {color: #03D3FC}")
+            w.setStyleSheet("QLabel::hover {color: #03D3FC}")
             w.setCursor(Qt.PointingHandCursor)
             w.setToolTip("Кликните для просмотра")
             self.p_layout.addWidget(w)
@@ -387,26 +385,23 @@ class SettingsWindow(QtWidgets.QDialog):
 
     def __init__(self, window):
         super().__init__(window)
-        self.m_window = window
         self._make_ui()
 
     def set_game_directory(self, directory):
         if directory != "":
-            self.m_window.minecraft_directory = directory.replace("/", "\\")
+            window.minecraft_directory = directory.replace("/", "\\")
             self.current_minecraft_directory.setText(
-                f"Текущая папка с игрой:\n{self.m_window.minecraft_directory}"
+                f"Текущая папка с игрой:\n{window.minecraft_directory}"
             )
 
     def closeEvent(self, event):
-        os.makedirs(
-            os.path.join(self.m_window.minecraft_directory, "profiles"), exist_ok=True
-        )
-        self.m_window.java_arguments = self.java_arguments_entry.text()
-        self.m_window.show_console = self.show_console_checkbox.isChecked()
-        self.m_window.show_old_alphas = self.old_alphas_checkbox.isChecked()
-        self.m_window.show_old_betas = self.old_betas_checkbox.isChecked()
-        self.m_window.show_snapshots = self.snapshots_checkbox.isChecked()
-        self.m_window.show_releases = self.releases_checkbox.isChecked()
+        os.makedirs(os.path.join(window.minecraft_directory, "profiles"), exist_ok=True)
+        window.java_arguments = self.java_arguments_entry.text()
+        window.show_console = self.show_console_checkbox.isChecked()
+        window.show_old_alphas = self.old_alphas_checkbox.isChecked()
+        window.show_old_betas = self.old_betas_checkbox.isChecked()
+        window.show_snapshots = self.snapshots_checkbox.isChecked()
+        window.show_releases = self.releases_checkbox.isChecked()
         return super().closeEvent(event)
 
     def _make_ui(self):
@@ -420,12 +415,12 @@ class SettingsWindow(QtWidgets.QDialog):
         self.java_arguments_label.setAlignment(Qt.AlignCenter)
 
         self.java_arguments_entry = QtWidgets.QLineEdit(self)
-        self.java_arguments_entry.setText(self.m_window.java_arguments)
+        self.java_arguments_entry.setText(window.java_arguments)
         self.java_arguments_entry.move(25, 45)
         self.java_arguments_entry.setFixedWidth(250)
 
         self.show_console_checkbox = QtWidgets.QCheckBox(self)
-        self.show_console_checkbox.setChecked(self.m_window.show_console)
+        self.show_console_checkbox.setChecked(window.show_console)
         self.show_console_checkbox.setText("Запуск с консолью")
         checkbox_width = self.show_console_checkbox.sizeHint().width()
         self.m_window_width = self.width()
@@ -437,11 +432,11 @@ class SettingsWindow(QtWidgets.QDialog):
         self.versions_filter_label.setAlignment(Qt.AlignCenter)
 
         self.old_alphas_checkbox = QtWidgets.QCheckBox(self)
-        self.old_alphas_checkbox.setChecked(self.m_window.show_old_alphas)
+        self.old_alphas_checkbox.setChecked(window.show_old_alphas)
         self.old_alphas_checkbox.setText("Старые альфы")
         self.old_alphas_checkbox.stateChanged.connect(
-            lambda: self.m_window.show_versions(
-                self.m_window,
+            lambda: window.show_versions(
+                window,
                 self.old_alphas_checkbox.isChecked(),
                 self.old_betas_checkbox.isChecked(),
                 self.snapshots_checkbox.isChecked(),
@@ -454,11 +449,11 @@ class SettingsWindow(QtWidgets.QDialog):
         )
 
         self.old_betas_checkbox = QtWidgets.QCheckBox(self)
-        self.old_betas_checkbox.setChecked(self.m_window.show_old_betas)
+        self.old_betas_checkbox.setChecked(window.show_old_betas)
         self.old_betas_checkbox.setText("Старые беты")
         self.old_betas_checkbox.stateChanged.connect(
-            lambda: self.m_window.show_versions(
-                self.m_window,
+            lambda: window.show_versions(
+                window,
                 self.old_alphas_checkbox.isChecked(),
                 self.old_betas_checkbox.isChecked(),
                 self.snapshots_checkbox.isChecked(),
@@ -471,11 +466,11 @@ class SettingsWindow(QtWidgets.QDialog):
         )
 
         self.snapshots_checkbox = QtWidgets.QCheckBox(self)
-        self.snapshots_checkbox.setChecked(self.m_window.show_snapshots)
+        self.snapshots_checkbox.setChecked(window.show_snapshots)
         self.snapshots_checkbox.setText("Снапшоты")
         self.snapshots_checkbox.stateChanged.connect(
-            lambda: self.m_window.show_versions(
-                self.m_window,
+            lambda: window.show_versions(
+                window,
                 self.old_alphas_checkbox.isChecked(),
                 self.old_betas_checkbox.isChecked(),
                 self.snapshots_checkbox.isChecked(),
@@ -488,11 +483,11 @@ class SettingsWindow(QtWidgets.QDialog):
         )
 
         self.releases_checkbox = QtWidgets.QCheckBox(self)
-        self.releases_checkbox.setChecked(self.m_window.show_releases)
+        self.releases_checkbox.setChecked(window.show_releases)
         self.releases_checkbox.setText("Релизы")
         self.releases_checkbox.stateChanged.connect(
-            lambda: self.m_window.show_versions(
-                self.m_window,
+            lambda: window.show_versions(
+                window,
                 self.old_alphas_checkbox.isChecked(),
                 self.old_betas_checkbox.isChecked(),
                 self.snapshots_checkbox.isChecked(),
@@ -520,7 +515,7 @@ class SettingsWindow(QtWidgets.QDialog):
         self.current_minecraft_directory.move(25, 310)
         self.current_minecraft_directory.setFixedWidth(250)
         self.current_minecraft_directory.setText(
-            f"Текущая папка с игрой:\n{self.m_window.minecraft_directory}"
+            f"Текущая папка с игрой:\n{window.minecraft_directory}"
         )
         self.current_minecraft_directory.setWordWrap(True)
         self.current_minecraft_directory.setAlignment(Qt.AlignCenter)
@@ -540,7 +535,6 @@ class AccountWindow(QtWidgets.QDialog):
 
     def __init__(self, window):
         super().__init__(window)
-        self.m_window = window
         self._make_ui()
 
     def _make_ui(self):
@@ -551,7 +545,7 @@ class AccountWindow(QtWidgets.QDialog):
                 json={
                     "username": self.ely_username_entry.text(),
                     "password": self.ely_password_entry.text(),
-                    "clientToken": self.m_window.client_token,
+                    "clientToken": window.client_token,
                     "requestUser": True,
                 },
             ) as r:
@@ -564,20 +558,18 @@ class AccountWindow(QtWidgets.QDialog):
                     f"Error message showed in login: login error, sign out before login"
                 )
             elif self.data.status_code == 200:
-                self.m_window.access_token = self.data.json()["accessToken"]
-                self.m_window.ely_uuid = self.data.json()["user"]["id"]
+                window.access_token = self.data.json()["accessToken"]
+                window.ely_uuid = self.data.json()["user"]["id"]
                 QtWidgets.QMessageBox.information(
                     self, "Поздравляем!", "Теперь вы будете видеть свой скин в игре."
                 )
                 logging.info(
                     f"Info message showed in login: ely skin will be shown in game"
                 )
-                self.m_window.sign_status = "Статус: вы вошли в аккаунт"
-                self.sign_status_label.setText(self.m_window.sign_status)
-                self.m_window.nickname_entry.setText(
-                    self.data.json()["user"]["username"]
-                )
-                self.m_window.nickname_entry.setReadOnly(True)
+                window.sign_status = "Статус: вы вошли в аккаунт"
+                self.sign_status_label.setText(window.sign_status)
+                window.nickname_entry.setText(self.data.json()["user"]["username"])
+                window.nickname_entry.setReadOnly(True)
             else:
                 QtWidgets.QMessageBox.critical(
                     self,
@@ -592,21 +584,21 @@ class AccountWindow(QtWidgets.QDialog):
             with requests.post(
                 "https://authserver.ely.by/auth/invalidate",
                 json={
-                    "accessToken": self.m_window.access_token,
-                    "clientToken": self.m_window.client_token,
+                    "accessToken": window.access_token,
+                    "clientToken": window.client_token,
                 },
             ) as r:
                 self.data = r
-            self.m_window.access_token = ""
-            self.m_window.ely_uuid = ""
+            window.access_token = ""
+            window.ely_uuid = ""
             if self.data.status_code == 200:
                 QtWidgets.QMessageBox.information(
                     self, "Выход из аккаунта", "Вы вышли из аккаунта"
                 )
                 logging.info(f"Info message showed in signout: successfully signed out")
-                self.m_window.nickname_entry.setReadOnly(False)
-                self.m_window.sign_status = "Статус: вы вышли из аккаунта"
-                self.sign_status_label.setText(self.m_window.sign_status)
+                window.nickname_entry.setReadOnly(False)
+                window.sign_status = "Статус: вы вышли из аккаунта"
+                self.sign_status_label.setText(window.sign_status)
             else:
                 QtWidgets.QMessageBox.critical(
                     self, "Ошибка выхода", self.data.json()["errorMessage"]
@@ -643,7 +635,7 @@ class AccountWindow(QtWidgets.QDialog):
         self.button_width = self.signout_button.sizeHint().width()
         self.signout_button.move((self.m_window_width - self.button_width) // 2, 150)
 
-        self.sign_status_label = QtWidgets.QLabel(self, text=self.m_window.sign_status)
+        self.sign_status_label = QtWidgets.QLabel(self, text=window.sign_status)
         self.label_width = self.sign_status_label.sizeHint().width()
         self.sign_status_label.move((self.m_window_width - self.label_width) // 2, 180)
 
@@ -654,7 +646,6 @@ class ProfilesWindow(QtWidgets.QDialog):
 
     def __init__(self, window):
         super().__init__(window)
-        self.m_window = window
         self._make_ui()
 
     def closeEvent(self, event):
@@ -664,7 +655,17 @@ class ProfilesWindow(QtWidgets.QDialog):
 
     def _update_ui_from_queue(self):
         while not self.queue.empty():
-            self.mrpack_import_status.setText(self.queue.get_nowait())
+            var, value = self.queue.get_nowait()
+            if var == "status":
+                self.mrpack_import_status.setText(value)
+            elif "show_versions":
+                window.show_versions(
+                    window,
+                    window.show_old_alphas,
+                    window.show_old_betas,
+                    window.show_snapshots,
+                    window.show_releases,
+                )
 
     def _handle_open_mrpack_choosing_window(self):
         mrpack_path = QtWidgets.QFileDialog.getOpenFileName(
@@ -677,11 +678,11 @@ class ProfilesWindow(QtWidgets.QDialog):
                 target=utils.run_in_process_with_exceptions_logging,
                 args=(
                     utils.download_profile_from_mrpack,
-                    self.m_window.minecraft_directory,
+                    window.minecraft_directory,
                     mrpack_path,
-                    self.m_window.no_internet_connection,
-                    self.queue,
+                    window.no_internet_connection,
                 ),
+                kwargs={"queue": self.queue},
                 daemon=True,
             )
             self.import_mrpack_process.start()
@@ -696,7 +697,7 @@ class ProfilesWindow(QtWidgets.QDialog):
             profile_name = self.profile_name_entry.text()
             version_installed = os.path.isfile(
                 os.path.join(
-                    self.m_window.minecraft_directory,
+                    window.minecraft_directory,
                     "versions",
                     version_folder_name,
                     "installed.FVL",
@@ -704,13 +705,15 @@ class ProfilesWindow(QtWidgets.QDialog):
             )
             if profile_name and version_folder_name and version_installed:
                 profile_path = os.path.join(
-                    self.m_window.minecraft_directory,
+                    window.minecraft_directory,
                     "profiles",
                     profile_name,
                 )
                 os.makedirs(profile_path, exist_ok=True)
                 with open(
-                    os.path.join(profile_path, "profile_info.json"), "w"
+                    os.path.join(profile_path, "profile_info.json"),
+                    "w",
+                    encoding="utf-8",
                 ) as profile_info_file:
                     json.dump(
                         [
@@ -720,17 +723,17 @@ class ProfilesWindow(QtWidgets.QDialog):
                         profile_info_file,
                         indent=4,
                     )
+                window.show_versions(
+                    window,
+                    window.show_old_alphas,
+                    window.show_old_betas,
+                    window.show_snapshots,
+                    window.show_releases,
+                )
                 QtWidgets.QMessageBox.information(
                     self,
                     "Создание папки профиля",
                     f"Папка профиль успешно создана по пути {profile_path}",
-                )
-                self.m_window.show_versions(
-                    self.m_window,
-                    self.m_window.show_old_alphas,
-                    self.m_window.show_old_betas,
-                    self.m_window.show_snapshots,
-                    self.m_window.show_releases,
                 )
             elif not version_installed:
                 QtWidgets.QMessageBox.critical(
@@ -784,7 +787,7 @@ class ProfilesWindow(QtWidgets.QDialog):
                 QtWidgets.QFileDialog.getExistingDirectory(
                     self.create_own_profile_window,
                     "Выбор папки версии",
-                    os.path.join(self.m_window.minecraft_directory, "versions"),
+                    os.path.join(window.minecraft_directory, "versions"),
                 ).replace("/", "\\")
             )
         )
@@ -991,9 +994,9 @@ class MainWindow(QtWidgets.QMainWindow):
                     self.ely_uuid,
                     self.access_token,
                     self.java_arguments,
-                    self.queue,
                     self.no_internet_connection,
                 ),
+                kwargs={"queue": self.queue, "is_game_launch_process": True},
                 daemon=True,
             )
             self.minecraft_download_process.start()

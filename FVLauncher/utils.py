@@ -39,11 +39,15 @@ def log_exception(*args):
 sys.excepthook = log_exception
 
 
-def run_in_process_with_exceptions_logging(func, *args, **kwargs):
+def run_in_process_with_exceptions_logging(
+    func, *args, queue, is_game_launch_process=False, **kwargs
+):
     try:
-        func(*args, **kwargs)
+        func(*args, queue, **kwargs)
     except Exception as e:
         log_exception(type(e), e, e.__traceback__)
+        if is_game_launch_process:
+            queue.put(("start_button", True))
 
 
 class GuiMessenger(QObject):
@@ -101,10 +105,10 @@ def download_profile_from_mrpack(
             mrpack_path,
             minecraft_directory,
             profile_path,
-            callback={"setStatus": queue.put},
+            callback={"setStatus": lambda value: queue.put(("status", value))},
         )
         with open(
-            os.path.join(profile_path, "profile_info.json"), "w"
+            os.path.join(profile_path, "profile_info.json"), "w", encoding="utf-8"
         ) as profile_info_file:
             json.dump(
                 [
@@ -126,6 +130,7 @@ def download_profile_from_mrpack(
                 "installed.FVL",
             ),
             "w",
+            encoding="utf-8",
         ).close()
         if (
             download_injector(
@@ -147,7 +152,9 @@ def download_profile_from_mrpack(
                     "injector_not_downloaded.FVL",
                 ),
                 "w",
+                encoding="utf-8",
             ).close()
+        queue.put(("show_versions", None))
         gui_messenger.info.emit(
             "Сборка установлена", f"Сборка {profile_name} была успешно установлена!"
         )
@@ -179,7 +186,7 @@ def download_injector(raw_version, minecraft_directory, no_internet_connection):
         f"{raw_version}.json",
     )
     if not minecraft_launcher_lib.utils.is_vanilla_version(raw_version):
-        with open(json_path) as file_with_downloads:
+        with open(json_path, encoding="utf-8") as file_with_downloads:
             raw_version = json.load(file_with_downloads)["inheritsFrom"]
     json_path = os.path.join(
         minecraft_directory,
@@ -189,7 +196,7 @@ def download_injector(raw_version, minecraft_directory, no_internet_connection):
     )
     if not no_internet_connection:
         authlib_version = None
-        with open(json_path) as file_with_downloads:
+        with open(json_path, encoding="utf-8") as file_with_downloads:
             for lib in json.load(file_with_downloads)["libraries"]:
                 if lib["name"].startswith("com.mojang:authlib:"):
                     authlib_version = lib["name"].split(":")[-1]
@@ -279,7 +286,8 @@ def resolve_version_name(
                         "versions",
                         folder_name,
                         f"{folder_name}.json",
-                    )
+                    ),
+                    encoding="utf-8",
                 ) as version_info:
                     if (
                         mod_loader in folder_name
@@ -295,17 +303,22 @@ def resolve_version_name(
                 "profile_info.json",
             )
             if version == v and os.path.isfile(profile_info_path):
-                with open(profile_info_path) as profile_info_file:
+                with open(profile_info_path, encoding="utf-8") as profile_info_file:
                     vanilla_version = json.load(profile_info_file)[0]["mc_version"]
                     if resolve_version_name(
                         vanilla_version, mod_loader, minecraft_directory
                     )[0]:
                         return vanilla_version, {
-                            "gameDir": os.path.join(minecraft_directory, "profiles", v)
+                            "game_directory": os.path.join(
+                                minecraft_directory, "profiles", v
+                            )
                         }
                     else:
-                        # ТОГДА КАЧАЕМ
-                        return None, {}
+                        gui_messenger.critical.emit(
+                            "Ошибка запуска профиля/сборки",
+                            "Версия игры, которую требует профиль/сборка некорректно установлена. Запуск невозможен.",
+                        )
+                        return None, {"do_not_install": True}
         else:
             return None, {}
 
@@ -345,11 +358,11 @@ def install_version(
                 last_progress_info = value
                 queue.put(("status", value))
 
-    name_of_folder_with_version, game_dir = resolve_version_name(
+    name_of_folder_with_version, other_info = resolve_version_name(
         raw_version, mod_loader, minecraft_directory
     )
-    if game_dir:
-        options["gameDirectory"] = game_dir["gameDir"]
+    if other_info and other_info.get("game_directory", None) is not None:
+        options["gameDirectory"] = other_info["game_directory"]
 
     if name_of_folder_with_version is not None:
         if os.path.isfile(
@@ -382,8 +395,10 @@ def install_version(
                 )
 
         return name_of_folder_with_version, minecraft_directory, options
-    elif not no_internet_connection and mod_loader_is_supported(
-        raw_version, mod_loader
+    elif (
+        not no_internet_connection
+        and mod_loader_is_supported(raw_version, mod_loader)
+        and not other_info.get("do_not_install", False)
     ):
         install_type(
             raw_version,
@@ -406,6 +421,7 @@ def install_version(
                     "installed.FVL",
                 ),
                 "w",
+                encoding="utf-8",
             ).close()
             queue.put(("status", "Загрузка injector..."))
             logging.debug("Installing injector in launch")
@@ -425,6 +441,7 @@ def install_version(
                         "injector_not_downloaded.FVL",
                     ),
                     "w",
+                    encoding="utf-8",
                 ).close()
             return name_of_folder_with_version, minecraft_directory, options
         else:
@@ -446,7 +463,7 @@ def install_version(
         logging.error(
             f"Error message showed in install_version: cannot download version because there is not internet connection"
         )
-    else:
+    elif not other_info.get("do_not_install", False):
         gui_messenger.critical.emit(
             "Ошибка",
             "Для данной версии нет выбранного вами загрузчика модов.",
@@ -496,8 +513,8 @@ def launch(
     ely_uuid,
     access_token,
     java_arguments,
-    queue,
     no_internet_connection,
+    queue,
 ):
     install_type, options = prepare_installation_parameters(
         mod_loader, nickname, ely_uuid, access_token, java_arguments
@@ -512,39 +529,46 @@ def launch(
         queue,
         no_internet_connection,
     )
-    version, minecraft_directory, options = launch_info
+    if launch_info is not None:
+        version, minecraft_directory, options = launch_info
 
-    options["jvmArguments"] = options["jvmArguments"].split()
-    queue.put(("progressbar", 100))
+        options["jvmArguments"] = options["jvmArguments"].split()
+        queue.put(("progressbar", 100))
 
-    optifine_path = os.path.join(minecraft_directory, "mods", "optifine.jar")
+        optifine_path = os.path.join(minecraft_directory, "mods", "optifine.jar")
 
-    if not os.path.isdir(os.path.join(minecraft_directory, "mods")):
-        os.mkdir(os.path.join(minecraft_directory, "mods"))
-    if os.path.isfile(optifine_path):
-        os.remove(optifine_path)
-    if optifine and mod_loader == "forge":
-        download_optifine(optifine_path, raw_version, queue, no_internet_connection)
-    logging.debug(f"Launching {version} version")
-    minecraft_process = subprocess.Popen(
-        minecraft_launcher_lib.command.get_minecraft_command(
-            version, minecraft_directory, options
-        ),
-        cwd=minecraft_directory,
-        **({"creationflags": subprocess.CREATE_NO_WINDOW} if not show_console else {}),
-    )
-    queue.put(("status", "Игра запущена"))
-    logging.debug(f"Minecraft process started on {version} version")
-    queue.put(("start_button", True))
-    start_rich_presence(raw_version, True, minecraft_process)
-    minecraft_return_code = minecraft_process.wait()
-    if minecraft_return_code != 0:
-        gui_messenger.log.emit(
-            "Игра была закрыта с ошибкой",
-            f"Minecraft вернул ошибку (крашнулся). Код ошибки: {minecraft_return_code}<br>"
-            "Вы хотите открыть лог?",
-            minecraft_directory,
+        if not os.path.isdir(os.path.join(minecraft_directory, "mods")):
+            os.mkdir(os.path.join(minecraft_directory, "mods"))
+        if os.path.isfile(optifine_path):
+            os.remove(optifine_path)
+        if optifine and mod_loader == "forge":
+            download_optifine(optifine_path, raw_version, queue, no_internet_connection)
+        logging.debug(f"Launching {version} version")
+        minecraft_process = subprocess.Popen(
+            minecraft_launcher_lib.command.get_minecraft_command(
+                version, minecraft_directory, options
+            ),
+            cwd=minecraft_directory,
+            **(
+                {"creationflags": subprocess.CREATE_NO_WINDOW}
+                if not show_console
+                else {}
+            ),
         )
+        queue.put(("status", "Игра запущена"))
+        queue.put(("start_button", True))
+        logging.debug(f"Minecraft process started on {version} version")
+        start_rich_presence(raw_version, True, minecraft_process)
+        minecraft_return_code = minecraft_process.wait()
+        if minecraft_return_code != 0:
+            gui_messenger.log.emit(
+                "Игра была закрыта с ошибкой",
+                f"Minecraft вернул ошибку (крашнулся). Код ошибки: {minecraft_return_code}<br>"
+                "Вы хотите открыть лог?",
+                minecraft_directory,
+            )
+    else:
+        queue.put(("start_button", True))
 
 
 def mod_loader_is_supported(raw_version, mod_loader):
@@ -564,10 +588,7 @@ def only_project_install(
 ):
     with requests.get(project_version["url"], stream=True) as r:
         r.raise_for_status()
-        with open(
-            project_file_path,
-            "wb",
-        ) as project_file:
+        with open(project_file_path, "wb") as project_file:
             bytes_downloaded = 0
             project_size = project_version["size"]
             chunk_size = int(project_size / 100)
@@ -576,7 +597,7 @@ def only_project_install(
                     bytes_downloaded += chunk_size
                     queue.put(min(100, int(bytes_downloaded / project_size * 100)))
                     project_file.write(chunk)
-    with open(profile_info_path, "r", encoding="utf-8") as profile_info_file:
+    with open(profile_info_path, encoding="utf-8") as profile_info_file:
         profile_info = json.load(profile_info_file)
     if not [project_version, project] in profile_info[1]:
         profile_info[1].append([project_version, project])
