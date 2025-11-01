@@ -654,4 +654,4 @@ def start_rich_presence(
 
 CLIENT_ID = "1399428342117175497"
 start_launcher_time = int(time.time())
-LAUNCHER_VERSION = "v5.5"
+LAUNCHER_VERSION = "v5.6"
