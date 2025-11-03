@@ -1191,7 +1191,7 @@ class MainWindow(QtWidgets.QMainWindow):
             self.show_old_betas,
             self.show_snapshots,
             self.show_releases,
-            self.versions_combobox.currentText(),
+            self.chosen_version,
         )
         self.versions_combobox.setFixedHeight(30)
         self.versions_combobox.setEditable(True)
