@@ -89,6 +89,10 @@ class GuiMessenger(QObject):
 gui_messenger = GuiMessenger()
 
 
+def boolean_to_sign_status(is_authorized):
+    return {True: "Вы вошли в аккаунт", False: "Вы не вошли в аккаунт"}[is_authorized]
+
+
 def download_profile_from_mrpack(
     minecraft_directory, mrpack_path, no_internet_connection, queue
 ):
@@ -654,4 +658,4 @@ def start_rich_presence(
 
 CLIENT_ID = "1399428342117175497"
 start_launcher_time = int(time.time())
-LAUNCHER_VERSION = "v5.6"
+LAUNCHER_VERSION = "v5.7"
