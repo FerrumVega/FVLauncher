@@ -520,6 +520,7 @@ def launch(
     no_internet_connection,
     queue,
 ):
+    1 / 0
     install_type, options = prepare_installation_parameters(
         mod_loader, nickname, ely_uuid, access_token, java_arguments
     )
@@ -562,7 +563,14 @@ def launch(
         queue.put(("status", "Игра запущена"))
         queue.put(("start_button", True))
         logging.debug(f"Minecraft process started on {version} version")
-        start_rich_presence(raw_version, True, minecraft_process)
+        queue.put(
+            (
+                "start_rich_presence",
+                "minecraft_opened",
+                raw_version,
+                minecraft_process.pid,
+            )
+        )
         minecraft_return_code = minecraft_process.wait()
         if minecraft_return_code != 0:
             gui_messenger.log.emit(
@@ -571,6 +579,7 @@ def launch(
                 "Вы хотите открыть лог?",
                 minecraft_directory,
             )
+        queue.put(("start_rich_presence", "minecraft_closed"))
     else:
         queue.put(("start_button", True))
 
@@ -613,14 +622,9 @@ def only_project_install(
     )
 
 
-def start_rich_presence(
-    raw_version=None,
-    minecraft=False,
-    minecraft_process=None,
-):
-    global rpc
+def start_rich_presence(rpc, raw_version=None, pid=None):
     try:
-        if not minecraft:
+        if raw_version is None:
             rpc.update(
                 details="В меню",
                 start=start_launcher_time,
@@ -635,7 +639,7 @@ def start_rich_presence(
             )
         else:
             rpc.update(
-                pid=minecraft_process.pid,
+                pid=pid,
                 state=(f"Играет на версии {raw_version}"),
                 details="В Minecraft",
                 start=start_launcher_time,
@@ -650,12 +654,10 @@ def start_rich_presence(
                     }
                 ],
             )
-            minecraft_process.wait()
-            start_rich_presence()
     except:
         pass
 
 
 CLIENT_ID = "1399428342117175497"
 start_launcher_time = int(time.time())
-LAUNCHER_VERSION = "v5.7.1"
+LAUNCHER_VERSION = "v5.8"

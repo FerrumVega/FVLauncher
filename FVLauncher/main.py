@@ -77,13 +77,20 @@ class ProjectsSearch(QtWidgets.QDialog):
         class ProjectVersionInfoWindow(QtWidgets.QDialog):
             class ProjectInstallWindow(QtWidgets.QDialog):
                 def __init__(
-                    self, parent, project, mc_version, loader, minecraft_directory
+                    self,
+                    parent,
+                    project,
+                    mc_version,
+                    loader,
+                    minecraft_directory,
+                    loaders_and_files,
                 ):
                     super().__init__(parent)
                     self.project = project
                     self.mc_version = mc_version
                     self.loader = loader
                     self.minecraft_directory = minecraft_directory
+                    self.loaders_and_files = loaders_and_files
                     self._make_ui()
 
                 def _update_ui_from_queue(self):
@@ -91,7 +98,7 @@ class ProjectsSearch(QtWidgets.QDialog):
                         self.progressbar.setValue(self.queue.get_nowait())
 
                 def download_project_process(
-                    self, project_version, project, profile, mc_version
+                    self, project_file, project, profile, mc_version, loader
                 ):
                     if profile:
                         with open(
@@ -121,7 +128,7 @@ class ProjectsSearch(QtWidgets.QDialog):
                                     if (
                                         QtWidgets.QMessageBox.warning(
                                             self,
-                                            "Ошибка скачивания проекта",
+                                            "Предупреждение",
                                             f"Версия игры профиля не совпадает с версией игры проекта, который вы выбрали\nВерсия игры проекта: {mc_version}\nВерсия игры сборки: {inherits_from}.\nВы уверены, что хотите установить проект на этот профиль?",
                                             QtWidgets.QMessageBox.Yes
                                             | QtWidgets.QMessageBox.No,
@@ -133,7 +140,7 @@ class ProjectsSearch(QtWidgets.QDialog):
                                 if project["project_type"] == "mod" and (
                                     QtWidgets.QMessageBox.warning(
                                         self,
-                                        "Ошибка скачивания мода",
+                                        "Предупреждение",
                                         "Вероятнее всего, вы пытаетесь установить мод на ванильный профиль. Вы уверены, что хотите установить мод на этот профиль?",
                                         QtWidgets.QMessageBox.Yes
                                         | QtWidgets.QMessageBox.No,
@@ -153,8 +160,12 @@ class ProjectsSearch(QtWidgets.QDialog):
                             self.minecraft_directory,
                             "profiles",
                             profile,
-                            type_to_dir[project["project_type"]],
-                            project_version["filename"],
+                            (
+                                type_to_dir[project["project_type"]]
+                                if loader != "datapack"
+                                else type_to_dir["datapack"]
+                            ),
+                            project_file["filename"],
                         )
                         profile_info_path = os.path.join(
                             self.minecraft_directory,
@@ -165,8 +176,12 @@ class ProjectsSearch(QtWidgets.QDialog):
                     else:
                         project_file_path = os.path.join(
                             self.minecraft_directory,
-                            type_to_dir[project["project_type"]],
-                            project_version["filename"],
+                            (
+                                type_to_dir[project["project_type"]]
+                                if loader != "datapack"
+                                else type_to_dir["datapack"]
+                            ),
+                            project_file["filename"],
                         )
                         profile_info_path = os.path.join(
                             self.minecraft_directory, "profile_info.json"
@@ -189,7 +204,7 @@ class ProjectsSearch(QtWidgets.QDialog):
                             target=utils.run_in_process_with_exceptions_logging,
                             args=(
                                 utils.only_project_install,
-                                project_version,
+                                project_file,
                                 project,
                                 project_file_path,
                                 profile_info_path,
@@ -203,11 +218,6 @@ class ProjectsSearch(QtWidgets.QDialog):
                         self.timer.start(200)
 
                 def _make_ui(self):
-                    with requests.get(
-                        f'https://api.modrinth.com/v2/project/{self.project["id"]}/version?game_versions=["{self.mc_version}"]&loaders=["{self.loader}"]'
-                    ) as r:
-                        r.raise_for_status()
-                        project_version = json.loads(r.text)[0]["files"][0]
                     profiles = []
                     if self.project["project_type"] not in [
                         "mod",
@@ -221,10 +231,18 @@ class ProjectsSearch(QtWidgets.QDialog):
                             "Вы не можете скачать плагин/модпак в профиль",
                         )
                         return
-                    for v in os.listdir(
+                    for profile in os.listdir(
                         os.path.join(self.minecraft_directory, "profiles")
                     ):
-                        profiles.append(v)
+                        if os.path.isfile(
+                            os.path.join(
+                                self.minecraft_directory,
+                                "profiles",
+                                profile,
+                                "profile_info.json",
+                            )
+                        ):
+                            profiles.append(profile)
                     self.setModal(True)
                     self.setWindowTitle(f"Выбор профиля для загрузки проекта")
                     self.setFixedSize(300, 500)
@@ -245,10 +263,11 @@ class ProjectsSearch(QtWidgets.QDialog):
                         start_y_coord += 30
                         download_button.clicked.connect(
                             lambda *args, cur_profile=profile: self.download_project_process(
-                                project_version,
+                                self.loaders_and_files[self.loader],
                                 self.project,
                                 cur_profile,
                                 self.mc_version,
+                                self.loader,
                             )
                         )
                     download_button = QtWidgets.QPushButton(self)
@@ -259,7 +278,11 @@ class ProjectsSearch(QtWidgets.QDialog):
                     start_y_coord += 30
                     download_button.clicked.connect(
                         lambda *args, cur_profile="": self.download_project_process(
-                            project_version, self.project, cur_profile, self.mc_version
+                            self.loaders_and_files[self.loader],
+                            self.project,
+                            cur_profile,
+                            self.mc_version,
+                            self.loader,
                         )
                     )
 
@@ -278,8 +301,17 @@ class ProjectsSearch(QtWidgets.QDialog):
                 self.setFixedSize(300, 500)
 
                 start_y_coord = 30
-
-                for loader in self.project["loaders"]:
+                with requests.get(
+                    f'https://api.modrinth.com/v2/project/{self.project["id"]}/version?game_versions=["{self.mc_version}"]'
+                ) as r:
+                    r.raise_for_status()
+                    self.project_versions_info = json.loads(r.text)
+                self.loaders_and_files = {}
+                for project_version in self.project_versions_info:
+                    for loader in project_version["loaders"]:
+                        if not loader in self.loaders_and_files:
+                            self.loaders_and_files[loader] = project_version["files"][0]
+                for loader in self.loaders_and_files:
                     download_button = QtWidgets.QPushButton(self)
                     download_button.setText(loader)
                     download_button.setFixedWidth(240)
@@ -292,6 +324,7 @@ class ProjectsSearch(QtWidgets.QDialog):
                             self.mc_version,
                             current_loader,
                             self.minecraft_directory,
+                            self.loaders_and_files,
                         )
                     )
 
@@ -931,13 +964,18 @@ class MainWindow(QtWidgets.QMainWindow):
 
     def _update_ui_from_queue(self):
         while not self.queue.empty():
-            var, value = self.queue.get_nowait()
+            var, value, *rich_presence_info = self.queue.get_nowait()
             if var == "progressbar":
                 self.progressbar.setValue(value)
             elif var == "status":
                 self.download_info_label.setText(value)
             elif var == "start_button":
                 self.start_button.setEnabled(value)
+            elif var == "start_rich_presence":
+                if value == "minecraft_opened":
+                    utils.start_rich_presence(rpc, *rich_presence_info)
+                elif value == "minecraft_closed":
+                    utils.start_rich_presence(rpc)
 
     def __init__(
         self,
@@ -955,7 +993,6 @@ class MainWindow(QtWidgets.QMainWindow):
         show_releases_position,
         saved_minecraft_directory,
     ):
-        global rpc
         self.chosen_version = chosen_version
         self.chosen_mod_loader = chosen_mod_loader
         self.chosen_nickname = chosen_nickname
@@ -1065,6 +1102,7 @@ class MainWindow(QtWidgets.QMainWindow):
             self.optifine_checkbox.setDisabled(True)
 
     def on_start_button(self):
+        global rpc
         if __name__ == "__main__":
             self.optifine = self.optifine_checkbox.isChecked()
             self.mod_loader = self.loaders_combobox.currentText()
@@ -1142,6 +1180,7 @@ class MainWindow(QtWidgets.QMainWindow):
             return self.saved_access_token, self.saved_ely_uuid
 
     def _make_ui(self):
+        global rpc
         # self.setStyleSheet(
         #     f"""
         #     QMainWindow {{
@@ -1274,7 +1313,7 @@ class MainWindow(QtWidgets.QMainWindow):
                 rpc.connect()
             except:
                 pass
-        utils.start_rich_presence()
+        utils.start_rich_presence(rpc)
 
         self.access_token, self.ely_uuid = self.auto_login()
 
