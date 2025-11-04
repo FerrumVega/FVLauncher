@@ -520,7 +520,6 @@ def launch(
     no_internet_connection,
     queue,
 ):
-    1 / 0
     install_type, options = prepare_installation_parameters(
         mod_loader, nickname, ely_uuid, access_token, java_arguments
     )
