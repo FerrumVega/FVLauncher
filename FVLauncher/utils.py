@@ -26,17 +26,17 @@ window_icon = QtGui.QIcon(
 )
 
 
-def log_exception(*args):
-    logging.critical(
-        f"There was an error:\n{''.join(traceback.format_exception(*args))}"
-    )
+def log_exception(exception_info):
+    logging.critical(f"There was an error:\n{exception_info}")
     gui_messenger.critical.emit(
         "Ошибка",
-        f"Произошла непредвиденная ошибка:\n{''.join(traceback.format_exception(*args))}",
+        f"Произошла непредвиденная ошибка:\n{exception_info}",
     )
 
 
-sys.excepthook = log_exception
+sys.excepthook = lambda exception_type, exception, exception_traceback: log_exception(
+    "".join(traceback.format_exception(exception_type, exception, exception_traceback))
+)
 
 
 def run_in_process_with_exceptions_logging(
@@ -45,7 +45,13 @@ def run_in_process_with_exceptions_logging(
     try:
         func(*args, queue, **kwargs)
     except Exception as e:
-        log_exception(type(e), e, e.__traceback__)
+        queue.put(
+            (
+                "log_exception",
+                None,
+                "".join(traceback.format_exception(type(e), e, e.__traceback__)),
+            )
+        )
         if is_game_launch_process:
             queue.put(("start_button", True))
 
@@ -64,25 +70,28 @@ class GuiMessenger(QObject):
         msg.setWindowIcon(window_icon)
         msg.setIcon(type)
         if directory is not None:
-            msg.setStandardButtons(QtWidgets.QMessageBox.Yes | QtWidgets.QMessageBox.No)
-            if msg.exec() == QtWidgets.QMessageBox.Yes:
+            msg.setStandardButtons(
+                QtWidgets.QMessageBox.StandardButton.Yes
+                | QtWidgets.QMessageBox.StandardButton.No
+            )
+            if msg.exec() == QtWidgets.QMessageBox.StandardButton.Yes:
                 os.startfile(os.path.join(directory, "logs", "latest.log"))
         else:
             msg.exec()
 
     def __init__(self):
-        super().__init__()
+        super().__init__(app)
         self.warning.connect(
-            lambda t, m: self.emit_msg(t, m, QtWidgets.QMessageBox.Warning)
+            lambda t, m: self.emit_msg(t, m, QtWidgets.QMessageBox.Icon.Warning)
         )
         self.critical.connect(
-            lambda t, m: self.emit_msg(t, m, QtWidgets.QMessageBox.Critical)
+            lambda t, m: self.emit_msg(t, m, QtWidgets.QMessageBox.Icon.Critical)
         )
         self.info.connect(
-            lambda t, m: self.emit_msg(t, m, QtWidgets.QMessageBox.Information)
+            lambda t, m: self.emit_msg(t, m, QtWidgets.QMessageBox.Icon.Information)
         )
         self.log.connect(
-            lambda t, m, d: self.emit_msg(t, m, QtWidgets.QMessageBox.Critical, d)
+            lambda t, m, d: self.emit_msg(t, m, QtWidgets.QMessageBox.Icon.Critical, d)
         )
 
 
@@ -282,7 +291,7 @@ def resolve_version_name(
             if mod_loader == "vanilla" and folder_name == version:
                 return folder_name, {}
             elif mod_loader != "vanilla" and all(
-                not loader in folder_name for loader in other_loaders
+                loader not in folder_name for loader in other_loaders
             ):
                 with open(
                     os.path.join(
@@ -339,28 +348,23 @@ def install_version(
     progress = 0
     max_progress = 100
     percents = 0
-    last_track_progress_call_time = time.time()
     last_progress_info = ""
 
     def track_progress(value, type):
-        nonlocal progress, max_progress, last_track_progress_call_time, last_progress_info, percents
-        if time.time() - last_track_progress_call_time > 1 or (
-            type == "progress_info" and value != last_progress_info
-        ):
-            if type != "progress_info":
-                if type == "progress":
-                    progress = value
-                elif type == "max":
-                    max_progress = value
-                try:
-                    percents = min(100.0, progress / max_progress * 100)
-                except ZeroDivisionError:
-                    percents = 0
-                queue.put(("progressbar", percents))
-                last_track_progress_call_time = time.time()
-            else:
-                last_progress_info = value
-                queue.put(("status", value))
+        nonlocal progress, max_progress, last_progress_info, percents
+        if type != "progress_info":
+            if type == "progress":
+                progress = value
+            elif type == "max":
+                max_progress = value
+            try:
+                percents = min(100.0, progress / max_progress * 100)
+            except ZeroDivisionError:
+                percents = 0
+            queue.put(("progressbar", percents))
+        else:
+            last_progress_info = value
+            queue.put(("status", value))
 
     name_of_folder_with_version, other_info = resolve_version_name(
         raw_version, mod_loader, minecraft_directory
@@ -465,7 +469,7 @@ def install_version(
         )
         queue.put(("start_button", True))
         logging.error(
-            f"Error message showed in install_version: cannot download version because there is not internet connection"
+            "Error message showed in install_version: cannot download version because there is not internet connection"
         )
     elif not other_info.get("do_not_install", False):
         gui_messenger.critical.emit(
@@ -503,7 +507,7 @@ def download_optifine(optifine_path, raw_version, queue, no_internet_connection)
             "Ошибка optifine", "Отсутсвует подключение к интернету."
         )
         logging.warning(
-            f"Warning message showed in download_optifine: optifine error, no internet connection"
+            "Warning message showed in download_optifine: optifine error, no internet connection"
         )
 
 
@@ -548,16 +552,15 @@ def launch(
         if optifine and mod_loader == "forge":
             download_optifine(optifine_path, raw_version, queue, no_internet_connection)
         logging.debug(f"Launching {version} version")
+        popen_kwargs = {}
+        if not show_console:
+            popen_kwargs["creationflags"] = subprocess.CREATE_NO_WINDOW
         minecraft_process = subprocess.Popen(
             minecraft_launcher_lib.command.get_minecraft_command(
                 version, minecraft_directory, options
             ),
             cwd=minecraft_directory,
-            **(
-                {"creationflags": subprocess.CREATE_NO_WINDOW}
-                if not show_console
-                else {}
-            ),
+            **popen_kwargs,
         )
         queue.put(("status", "Игра запущена"))
         queue.put(("start_button", True))
@@ -579,6 +582,7 @@ def launch(
                 minecraft_directory,
             )
         queue.put(("start_rich_presence", "minecraft_closed"))
+        queue.put(("status", ""))
     else:
         queue.put(("start_button", True))
 
@@ -611,7 +615,7 @@ def only_project_install(
                     project_file.write(chunk)
     with open(profile_info_path, encoding="utf-8") as profile_info_file:
         profile_info = json.load(profile_info_file)
-    if not [project_version, project] in profile_info[1]:
+    if [project_version, project] not in profile_info[1]:
         profile_info[1].append([project_version, project])
         with open(profile_info_path, "w", encoding="utf-8") as profile_info_file:
             json.dump(profile_info, profile_info_file, indent=4)
@@ -653,7 +657,7 @@ def start_rich_presence(rpc, raw_version=None, pid=None):
                     }
                 ],
             )
-    except:
+    except AssertionError:
         pass
 
 

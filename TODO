@@ -3,7 +3,6 @@ LIBRARY_FIXES:
     фикс quilt
 
 FIXES:
-    gui_messenger имеет родителя
     optifine можно качать на сборку
 
 NEW:
