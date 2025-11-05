@@ -1,6 +1,8 @@
 # FVLauncher
 
-NOT AN OFFICIAL MINECRAFT PRODUCT. NOT APPROVED BY OR ASSOCIATED WITH MOJANG OR MICROSOFT
+NOT AN OFFICIAL MINECRAFT PRODUCT. NOT APPROVED BY OR ASSOCIATED WITH MOJANG OR MICROSOFT  
+[![CodeFactor](https://www.codefactor.io/repository/github/ferrumvega/fvlauncher/badge)](https://www.codefactor.io/repository/github/ferrumvega/fvlauncher)
+[![Codacy Badge](https://app.codacy.com/project/badge/Grade/fce1f22eeb424c67a9012f31660b101b)](https://app.codacy.com/gh/FerrumVega/FVLauncher/dashboard?utm_source=gh&utm_medium=referral&utm_content=&utm_campaign=Badge_grade)
 
 ## Для чего он нужен?
 

@@ -12,7 +12,7 @@ import pypresence.exceptions
 import logging
 import multiprocessing
 from faker import Faker
-
+from typing import Dict, Union, Any
 
 import utils
 import updater
@@ -68,7 +68,7 @@ def load_config():
 
 
 class ClickableLabel(QtWidgets.QLabel):
-    def __init__(self, *args, **kwargs):
+    def __init__(self, *args: Any, **kwargs: Any):
         super().__init__(*args, **kwargs)
         if main_window.allow_experiments and main_window.hover_color:
             self.setStyleSheet(f"QLabel::hover {{color: {main_window.hover_color}}}")
@@ -79,7 +79,7 @@ class ClickableLabel(QtWidgets.QLabel):
 
     clicked = Signal()
 
-    def mouseReleaseEvent(self, e):
+    def mouseReleaseEvent(self, e: QtGui.QMouseEvent):
         super().mouseReleaseEvent(e)
         self.clicked.emit()
 
@@ -90,12 +90,12 @@ class ProjectsSearch(QtWidgets.QDialog):
             class ProjectInstallWindow(QtWidgets.QDialog):
                 def __init__(
                     self,
-                    parent,
-                    project,
-                    mc_version,
-                    loader,
-                    minecraft_directory,
-                    loaders_and_files,
+                    parent: QtWidgets.QDialog,
+                    project: Dict[Any, Any],
+                    mc_version: str,
+                    loader: str,
+                    minecraft_directory: str,
+                    loaders_and_files: Dict[str, Dict],
                 ):
                     super().__init__(parent)
                     self.project = project
@@ -114,7 +114,12 @@ class ProjectsSearch(QtWidgets.QDialog):
                             utils.log_exception(*exception_info)
 
                 def download_project_process(
-                    self, project_file, project, profile, mc_version, loader
+                    self,
+                    project_file: Dict[Any, Any],
+                    project: Dict[Any, Any],
+                    profile: str,
+                    mc_version: str,
+                    loader: str,
                 ):
                     if profile:
                         with open(
@@ -305,7 +310,13 @@ class ProjectsSearch(QtWidgets.QDialog):
 
                     self.show()
 
-            def __init__(self, parent, project, mc_version, minecraft_directory):
+            def __init__(
+                self,
+                parent: QtWidgets.QDialog,
+                project: Dict[Any, Any],
+                mc_version: str,
+                minecraft_directory: str,
+            ):
                 super().__init__(parent)
                 self.project = project
                 self.mc_version = mc_version
@@ -319,7 +330,8 @@ class ProjectsSearch(QtWidgets.QDialog):
 
                 start_y_coord = 30
                 with requests.get(
-                    f'https://api.modrinth.com/v2/project/{self.project["id"]}/version?game_versions=["{self.mc_version}"]'
+                    f'https://api.modrinth.com/v2/project/{self.project["id"]}/version?game_versions=["{self.mc_version}"]',
+                    timeout=10,
                 ) as r:
                     r.raise_for_status()
                     self.project_versions_info = json.loads(r.text)
@@ -347,7 +359,9 @@ class ProjectsSearch(QtWidgets.QDialog):
 
                 self.show()
 
-        def __init__(self, parent, project_id, minecraft_directory):
+        def __init__(
+            self, parent: QtWidgets.QDialog, project_id: int, minecraft_directory: str
+        ):
             super().__init__(parent)
             self.minecraft_directory = minecraft_directory
             self.type_to_russian_name = {
@@ -356,7 +370,9 @@ class ProjectsSearch(QtWidgets.QDialog):
                 "datapack": "датапак",
                 "shader": "шейдер",
             }
-            with requests.get(f"https://api.modrinth.com/v2/project/{project_id}") as r:
+            with requests.get(
+                f"https://api.modrinth.com/v2/project/{project_id}", timeout=10
+            ) as r:
                 r.raise_for_status()
                 self.project = json.loads(r.text)
             self._make_ui()
@@ -376,7 +392,7 @@ class ProjectsSearch(QtWidgets.QDialog):
             self.project_title.setFixedWidth(260)
 
             self.icon = QtGui.QPixmap()
-            with requests.get(self.project["icon_url"]) as r:
+            with requests.get(self.project["icon_url"], timeout=10) as r:
                 r.raise_for_status()
                 self.icon.loadFromData(r.content)
             self.project_icon = QtWidgets.QLabel(self)
@@ -415,17 +431,19 @@ class ProjectsSearch(QtWidgets.QDialog):
 
             self.show()
 
-    def __init__(self, main_window, minecraft_directory):
+    def __init__(self, main_window: QtWidgets.QMainWindow, minecraft_directory: str):
         super().__init__(main_window)
         self.minecraft_directory = minecraft_directory
         self._make_ui()
 
-    def search(self, query):
+    def search(self, query: str):
         while self.p_layout.count():
             widget = self.p_layout.takeAt(0).widget()
             if widget is not None:
                 widget.deleteLater()
-        with requests.get(f"https://api.modrinth.com/v2/search?query={query}") as r:
+        with requests.get(
+            f"https://api.modrinth.com/v2/search?query={query}", timeout=10
+        ) as r:
             r.raise_for_status()
             info = json.loads(r.text)
         for project in info["hits"]:
@@ -467,18 +485,18 @@ class ProjectsSearch(QtWidgets.QDialog):
 
 
 class SettingsWindow(QtWidgets.QDialog):
-    def __init__(self, main_window):
+    def __init__(self, main_window: QtWidgets.QMainWindow):
         super().__init__(main_window)
         self._make_ui()
 
-    def set_game_directory(self, directory):
-        if directory != "":
+    def set_game_directory(self, directory: str):
+        if directory:
             main_window.minecraft_directory = directory.replace("/", "\\")
             self.current_minecraft_directory.setText(
                 f"Текущая папка с игрой:\n{main_window.minecraft_directory}"
             )
 
-    def closeEvent(self, event):
+    def closeEvent(self, event: QtGui.QCloseEvent):
         os.makedirs(
             os.path.join(main_window.minecraft_directory, "profiles"), exist_ok=True
         )
@@ -624,13 +642,13 @@ class SettingsWindow(QtWidgets.QDialog):
 
 
 class AccountWindow(QtWidgets.QDialog):
-    def __init__(self, main_window):
+    def __init__(self, main_window: QtWidgets.QMainWindow):
         super().__init__(main_window)
         self._make_ui()
 
     class SkinChanger(QtWidgets.QDialog):
-        def __init__(self, account_window):
-            super().__init__(account_window)
+        def __init__(self, parent: QtWidgets.QDialog):
+            super().__init__(parent)
             self._make_ui()
 
         def _make_ui(self):
@@ -658,6 +676,7 @@ class AccountWindow(QtWidgets.QDialog):
                     "clientToken": main_window.client_token,
                     "requestUser": True,
                 },
+                timeout=10,
             )
             if main_window.is_authorized:
                 QtWidgets.QMessageBox.critical(
@@ -698,6 +717,7 @@ class AccountWindow(QtWidgets.QDialog):
                     "accessToken": main_window.access_token,
                     "clientToken": main_window.client_token,
                 },
+                timeout=10,
             )
             main_window.access_token = ""
             main_window.ely_uuid = ""
@@ -769,7 +789,7 @@ class AccountWindow(QtWidgets.QDialog):
 
 class ProfilesWindow(QtWidgets.QDialog):
     class CreateOwnProfile(QtWidgets.QDialog):
-        def __init__(self, parent):
+        def __init__(self, parent: QtWidgets.QDialog):
             super().__init__(parent)
             self._make_ui()
 
@@ -880,11 +900,11 @@ class ProfilesWindow(QtWidgets.QDialog):
 
             self.show()
 
-    def __init__(self, main_window):
+    def __init__(self, main_window: QtWidgets.QMainWindow):
         super().__init__(main_window)
         self._make_ui()
 
-    def closeEvent(self, event):
+    def closeEvent(self, event: QtGui.QCloseEvent):
         if hasattr(self, "import_mrpack_process"):
             self.import_mrpack_process.terminate()
         return super().closeEvent(event)
@@ -988,21 +1008,21 @@ class MainWindow(QtWidgets.QMainWindow):
 
     def __init__(
         self,
-        chosen_version,
-        chosen_mod_loader,
-        chosen_nickname,
-        chosen_java_arguments,
-        optifine_position,
-        saved_access_token,
-        saved_ely_uuid,
-        show_console_position,
-        show_old_alphas_position,
-        show_old_betas_position,
-        show_snapshots_position,
-        show_releases_position,
-        saved_minecraft_directory,
-        allow_experiments,
-        hover_color,
+        chosen_version: str,
+        chosen_mod_loader: str,
+        chosen_nickname: str,
+        chosen_java_arguments: str,
+        optifine_position: str,
+        saved_access_token: str,
+        saved_ely_uuid: str,
+        show_console_position: str,
+        show_old_alphas_position: str,
+        show_old_betas_position: str,
+        show_snapshots_position: str,
+        show_releases_position: str,
+        saved_minecraft_directory: str,
+        allow_experiments: str,
+        hover_color: str,
     ):
         self.chosen_version = chosen_version
         self.chosen_mod_loader = chosen_mod_loader
@@ -1028,7 +1048,7 @@ class MainWindow(QtWidgets.QMainWindow):
             self.save_config_on_close = False
             self.close()
 
-    def closeEvent(self, event):
+    def closeEvent(self, event: QtGui.QCloseEvent):
         self.optifine = self.optifine_checkbox.isChecked()
         self.mod_loader = self.loaders_combobox.currentText()
         self.raw_version = self.versions_combobox.currentText()
@@ -1040,12 +1060,12 @@ class MainWindow(QtWidgets.QMainWindow):
 
     def show_versions(
         self,
-        main_window,
-        show_old_alphas,
-        show_old_betas,
-        show_snapshots,
-        show_releases,
-        current_version,
+        main_window,  # TODO
+        show_old_alphas: Union[bool, int],
+        show_old_betas: Union[bool, int],
+        show_snapshots: Union[bool, int],
+        show_releases: Union[bool, int],
+        current_version: str,
     ):
         versions_names_list = []
         try:
@@ -1110,7 +1130,7 @@ class MainWindow(QtWidgets.QMainWindow):
         with open(config_path, "w", encoding="utf-8") as config_file:
             parser.write(config_file)
 
-    def block_optifine_checkbox(self, *args):
+    def block_optifine_checkbox(self, *args: Any):
         if self.loaders_combobox.currentText() == "forge":
             self.optifine_checkbox.setDisabled(False)
         else:
@@ -1156,6 +1176,7 @@ class MainWindow(QtWidgets.QMainWindow):
                 with requests.post(
                     "https://authserver.ely.by/auth/validate",
                     json={"accessToken": self.saved_access_token},
+                    timeout=10,
                 ) as r:
                     valid_token_info = r
                 if valid_token_info.status_code != 200:
@@ -1166,6 +1187,7 @@ class MainWindow(QtWidgets.QMainWindow):
                             "clientToken": self.client_token,
                             "requestUser": True,
                         },
+                        timeout=10,
                     ) as r:
                         refreshed_token_info = r
                     if refreshed_token_info.status_code != 200:
@@ -1207,6 +1229,21 @@ class MainWindow(QtWidgets.QMainWindow):
         # """
         # )
         # print(utils.app.palette().accent().color().name())
+
+        #           .__....._             _.....__,
+        #              .": o :':         ;': o :".
+        #              `. `-' .'.       .'. `-' .'
+        #                `---'             `---'
+        #
+        #      _...----...      ...   ...      ...----..._
+        #   .-'__..-""'----    `.  `"`  .'    ----'""-..__`-.
+        #  '.-'   _.--"""'       `-._.-'       '"""--._   `-.`
+        #  '  .-"'                  :                  `"-.  `
+        #    '   `.              _.'"'._              .'   `
+        #          `.       ,.-'"       "'-.,       .'
+        #            `.                           .'
+        #              `-._                   _.-'
+        #                  `"'--...___...--'"`
 
         self.setWindowTitle("FVLauncher")
         self.is_authorized = None
@@ -1320,7 +1357,7 @@ class MainWindow(QtWidgets.QMainWindow):
         self.show()
 
         try:
-            requests.get("https://google.com").raise_for_status()
+            requests.get("https://google.com", timeout=10).raise_for_status()
             self.no_internet_connection = False
         except requests.exceptions.ConnectionError:
             self.no_internet_connection = True

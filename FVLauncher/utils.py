@@ -10,8 +10,12 @@ import time
 import sys
 import traceback
 from PySide6.QtCore import QObject, Signal
+from typing import Dict, Union, Callable, Any, Optional
+from minecraft_launcher_lib.types import MinecraftOptions
+from pypresence.presence import Presence
+from multiprocessing.queues import Queue
 from PySide6 import QtWidgets, QtGui
-from xml.etree import ElementTree as ET
+from defusedxml import ElementTree as ET
 
 app = QtWidgets.QApplication(sys.argv)
 app.setStyle(QtWidgets.QStyleFactory.create("windows11"))
@@ -26,7 +30,7 @@ window_icon = QtGui.QIcon(
 )
 
 
-def log_exception(exception_info):
+def log_exception(exception_info: str):
     logging.critical(f"There was an error:\n{exception_info}")
     gui_messenger.critical.emit(
         "Ошибка",
@@ -40,7 +44,11 @@ sys.excepthook = lambda exception_type, exception, exception_traceback: log_exce
 
 
 def run_in_process_with_exceptions_logging(
-    func, *args, queue, is_game_launch_process=False, **kwargs
+    func: Callable,
+    *args: Any,
+    queue: Queue,
+    is_game_launch_process: bool = False,
+    **kwargs: Any,
 ):
     try:
         func(*args, queue, **kwargs)
@@ -62,13 +70,19 @@ class GuiMessenger(QObject):
     info = Signal(str, str)
     log = Signal(str, str, str)
 
-    def emit_msg(self, t, m, type, directory=None):
+    def emit_msg(
+        self,
+        t: str,
+        m: str,
+        icon_type: QtWidgets.QMessageBox.Icon,
+        directory: Optional[str] = None,
+    ):
         global window_icon
         msg = QtWidgets.QMessageBox()
         msg.setWindowTitle(t)
         msg.setText(m)
         msg.setWindowIcon(window_icon)
-        msg.setIcon(type)
+        msg.setIcon(icon_type)
         if directory is not None:
             msg.setStandardButtons(
                 QtWidgets.QMessageBox.StandardButton.Yes
@@ -98,12 +112,19 @@ class GuiMessenger(QObject):
 gui_messenger = GuiMessenger()
 
 
-def boolean_to_sign_status(is_authorized):
-    return {True: "Вы вошли в аккаунт", False: "Вы не вошли в аккаунт"}[is_authorized]
+def boolean_to_sign_status(is_authorized: Optional[bool]):
+    return {
+        True: "Вы вошли в аккаунт",
+        False: "Вы не вошли в аккаунт",
+        None: "Ошибка проверки входа в аккаунт",
+    }[is_authorized]
 
 
 def download_profile_from_mrpack(
-    minecraft_directory, mrpack_path, no_internet_connection, queue
+    minecraft_directory: str,
+    mrpack_path: str,
+    no_internet_connection: bool,
+    queue: Queue,
 ):
     if mrpack_path:
         profile_name = minecraft_launcher_lib.mrpack.get_mrpack_information(
@@ -174,7 +195,11 @@ def download_profile_from_mrpack(
 
 
 def prepare_installation_parameters(
-    mod_loader, nickname, ely_uuid, access_token, java_arguments
+    mod_loader: str,
+    nickname: str,
+    ely_uuid: str,
+    access_token: str,
+    java_arguments: str,
 ):
     if mod_loader != "vanilla":
         install_type = minecraft_launcher_lib.mod_loader.get_mod_loader(
@@ -186,12 +211,14 @@ def prepare_installation_parameters(
         "username": nickname,
         "uuid": ely_uuid if ely_uuid else str(uuid.uuid4().hex),
         "token": access_token,
-        "jvmArguments": java_arguments,
+        "jvmArguments": java_arguments.split(),
     }
     return install_type, options
 
 
-def download_injector(raw_version, minecraft_directory, no_internet_connection):
+def download_injector(
+    raw_version: str, minecraft_directory: str, no_internet_connection: bool
+):
     json_path = os.path.join(
         minecraft_directory,
         "versions",
@@ -216,7 +243,7 @@ def download_injector(raw_version, minecraft_directory, no_internet_connection):
                     break
         if authlib_version is not None:
             base_url = "https://maven.ely.by/releases/by/ely/authlib"
-            with requests.get(f"{base_url}/maven-metadata.xml") as r:
+            with requests.get(f"{base_url}/maven-metadata.xml", timeout=10) as r:
                 r.raise_for_status()
                 maven_metadata = r.text
             for maven_version in ET.fromstring(maven_metadata).findall(
@@ -236,7 +263,8 @@ def download_injector(raw_version, minecraft_directory, no_internet_connection):
                         "wb",
                     ) as jar:
                         with requests.get(
-                            f"{base_url}/{maven_version.text}/authlib-{maven_version.text}.jar"
+                            f"{base_url}/{maven_version.text}/authlib-{maven_version.text}.jar",
+                            timeout=10,
                         ) as r:
                             r.raise_for_status()
                             authlib_jar = r.content
@@ -270,7 +298,10 @@ def download_injector(raw_version, minecraft_directory, no_internet_connection):
 
 
 def resolve_version_name(
-    version, mod_loader, minecraft_directory, ignore_installed_file=False
+    version: str,
+    mod_loader: str,
+    minecraft_directory: str,
+    ignore_installed_file: bool = False,
 ):
     other_loaders = ["fabric", "forge", "quilt", "neoforge", "vanilla"]
     other_loaders.remove(mod_loader)
@@ -338,24 +369,24 @@ def resolve_version_name(
 
 def install_version(
     install_type,
-    options,
-    minecraft_directory,
-    mod_loader,
-    raw_version,
-    queue,
-    no_internet_connection,
+    options: MinecraftOptions,  # TODO
+    minecraft_directory: str,
+    mod_loader: str,
+    raw_version: str,
+    queue: Queue,
+    no_internet_connection: bool,
 ):
-    progress = 0
-    max_progress = 100
+    progress: int = 0
+    max_progress: int = 100
     percents = 0
     last_progress_info = ""
 
-    def track_progress(value, type):
+    def track_progress(value: Union[str, int], progress_type: str):
         nonlocal progress, max_progress, last_progress_info, percents
-        if type != "progress_info":
-            if type == "progress":
+        if progress_type != "progress_info" and isinstance(value, int):
+            if progress_type == "progress":
                 progress = value
-            elif type == "max":
+            elif progress_type == "max":
                 max_progress = value
             try:
                 percents = min(100.0, progress / max_progress * 100)
@@ -482,7 +513,9 @@ def install_version(
         )
 
 
-def download_optifine(optifine_path, raw_version, queue, no_internet_connection):
+def download_optifine(
+    optifine_path: str, raw_version: str, queue: Queue, no_internet_connection: bool
+):
     if not no_internet_connection:
         url = None
         optifine_info = optipy.getVersion(raw_version)
@@ -491,7 +524,7 @@ def download_optifine(optifine_path, raw_version, queue, no_internet_connection)
             queue.put(("status", "Загрузка optifine..."))
             logging.debug("Installing optifine in download_optifine")
             with open(optifine_path, "wb") as optifine_jar:
-                with requests.get(url) as r:
+                with requests.get(url, timeout=10) as r:
                     r.raise_for_status()
                     optifine_jar.write(r.content)
         else:
@@ -512,17 +545,17 @@ def download_optifine(optifine_path, raw_version, queue, no_internet_connection)
 
 
 def launch(
-    minecraft_directory,
-    mod_loader,
-    raw_version,
-    optifine,
-    show_console,
-    nickname,
-    ely_uuid,
-    access_token,
-    java_arguments,
-    no_internet_connection,
-    queue,
+    minecraft_directory: str,
+    mod_loader: str,
+    raw_version: str,
+    optifine: bool,
+    show_console: bool,
+    nickname: str,
+    ely_uuid: str,
+    access_token: str,
+    java_arguments: str,
+    no_internet_connection: bool,
+    queue: Queue,
 ):
     install_type, options = prepare_installation_parameters(
         mod_loader, nickname, ely_uuid, access_token, java_arguments
@@ -539,8 +572,6 @@ def launch(
     )
     if launch_info is not None:
         version, minecraft_directory, options = launch_info
-
-        options["jvmArguments"] = options["jvmArguments"].split()
         queue.put(("progressbar", 100))
 
         optifine_path = os.path.join(minecraft_directory, "mods", "optifine.jar")
@@ -587,22 +618,23 @@ def launch(
         queue.put(("start_button", True))
 
 
-def mod_loader_is_supported(raw_version, mod_loader):
+def mod_loader_is_supported(raw_version: str, mod_loader: str):
     if mod_loader != "vanilla":
-        if minecraft_launcher_lib.mod_loader.get_mod_loader(
+        return minecraft_launcher_lib.mod_loader.get_mod_loader(
             mod_loader
-        ).is_minecraft_version_supported(raw_version):
-            return True
-        else:
-            return False
+        ).is_minecraft_version_supported(raw_version)
     else:
         return True
 
 
 def only_project_install(
-    project_version, project, project_file_path, profile_info_path, queue
+    project_version: Dict[Any, Any],
+    project: Dict[Any, Any],
+    project_file_path: str,
+    profile_info_path: str,
+    queue: Queue,
 ):
-    with requests.get(project_version["url"], stream=True) as r:
+    with requests.get(project_version["url"], stream=True, timeout=10) as r:
         r.raise_for_status()
         with open(project_file_path, "wb") as project_file:
             bytes_downloaded = 0
@@ -625,9 +657,11 @@ def only_project_install(
     )
 
 
-def start_rich_presence(rpc, raw_version=None, pid=None):
+def start_rich_presence(
+    rpc: Presence, raw_version: Optional[str] = None, pid: Optional[int] = None
+):
     try:
-        if raw_version is None:
+        if pid is None:
             rpc.update(
                 details="В меню",
                 start=start_launcher_time,
