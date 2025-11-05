@@ -10,8 +10,7 @@ import time
 import sys
 import traceback
 from PySide6.QtCore import QObject, Signal
-from typing import Dict, Union, Callable, Any, Optional
-from minecraft_launcher_lib.types import MinecraftOptions
+from typing import Dict, Union, Callable, Any, Optional, Tuple
 from pypresence.presence import Presence
 from multiprocessing.queues import Queue
 from PySide6 import QtWidgets, QtGui
@@ -302,7 +301,7 @@ def resolve_version_name(
     mod_loader: str,
     minecraft_directory: str,
     ignore_installed_file: bool = False,
-):
+) -> Tuple[Union[None, str], Dict[str, bool | str]]:
     other_loaders = ["fabric", "forge", "quilt", "neoforge", "vanilla"]
     other_loaders.remove(mod_loader)
     for v in sorted(
@@ -368,8 +367,8 @@ def resolve_version_name(
 
 
 def install_version(
-    install_type,
-    options: MinecraftOptions,  # TODO
+    install_type,  # TODO
+    options,  # TODO
     minecraft_directory: str,
     mod_loader: str,
     raw_version: str,
@@ -402,7 +401,6 @@ def install_version(
     )
     if other_info and other_info.get("game_directory", None) is not None:
         options["gameDirectory"] = other_info["game_directory"]
-
     if name_of_folder_with_version is not None:
         if os.path.isfile(
             os.path.join(

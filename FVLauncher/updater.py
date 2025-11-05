@@ -5,22 +5,23 @@ import json
 
 def is_new_version_released(current_version):
     current_version_tuple = tuple(int(t) for t in current_version[1:].split("."))
-    last_version = json.loads(
-        requests.get(
-            "https://api.github.com/repos/FerrumVega/FVLauncher/releases/latest"
-        ).content
-    )["tag_name"]
+    with requests.get(
+        "https://api.github.com/repos/FerrumVega/FVLauncher/releases/latest", timeout=10
+    ) as r:
+        r.raise_for_status()
+        last_version = json.loads(r.content)["tag_name"]
     last_version_tuple = tuple(int(t) for t in last_version[1:].split("."))
     return True if last_version_tuple > current_version_tuple else False
 
 
 def update():
     with open("FVLauncher_Installer.exe", "wb") as launcher_installer_file:
-        launcher_installer_file.write(
-            requests.get(
-                "https://github.com/FerrumVega/FVLauncher/releases/latest/download/FVLauncher_Installer.exe",
-            ).content
-        )
+        with requests.get(
+            "https://github.com/FerrumVega/FVLauncher/releases/latest/download/FVLauncher_Installer.exe",
+            timeout=10,
+        ) as r:
+            r.raise_for_status()
+            launcher_installer_file.write(r.content)
 
     subprocess.Popen(
         ["FVLauncher_Installer.exe", "/SILENT"],
