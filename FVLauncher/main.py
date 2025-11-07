@@ -1054,9 +1054,9 @@ class MainWindow(QtWidgets.QMainWindow):
                 self.start_button.setEnabled(value)
             elif var == "start_rich_presence":
                 if value == "minecraft_opened":
-                    utils.start_rich_presence(rpc, *other_info)
+                    utils.start_rich_presence(self.rpc, *other_info)
                 elif value == "minecraft_closed":
-                    utils.start_rich_presence(rpc)
+                    utils.start_rich_presence(self.rpc)
             elif var == "log_exception":
                 log_exception(*other_info)
             elif var == "show_message":
@@ -1222,7 +1222,6 @@ class MainWindow(QtWidgets.QMainWindow):
             self.optifine_checkbox.setDisabled(True)
 
     def on_start_button(self):
-        global rpc
         if __name__ == "__main__":
             self.optifine = self.optifine_checkbox.isChecked()
             self.mod_loader = self.loaders_combobox.currentText()
@@ -1302,7 +1301,6 @@ class MainWindow(QtWidgets.QMainWindow):
             return self.saved_access_token, self.saved_ely_uuid
 
     def _make_ui(self):
-        global rpc
         # self.setStyleSheet(
         #     f"""
         #     QMainWindow {{
@@ -1434,13 +1432,13 @@ class MainWindow(QtWidgets.QMainWindow):
             self.no_internet_connection = True
 
         self.client_token = str(uuid.uuid5(uuid.NAMESPACE_DNS, str(uuid.getnode())))
-        rpc = Presence(utils.CLIENT_ID)
+        self.rpc = Presence(utils.CLIENT_ID)
         if not self.no_internet_connection:
             try:
-                rpc.connect()
+                self.rpc.connect()
             except pypresence.exceptions.DiscordNotFound:
                 pass
-        utils.start_rich_presence(rpc)
+        utils.start_rich_presence(self.rpc)
 
         self.access_token, self.ely_uuid = self.auto_login()
 
