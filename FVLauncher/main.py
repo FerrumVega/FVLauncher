@@ -1216,7 +1216,27 @@ class MainWindow(QtWidgets.QMainWindow):
             parser.write(config_file)
 
     def block_optifine_checkbox(self, *args: Any):
-        if self.loaders_combobox.currentText() == "forge":
+        if os.path.isdir(
+            os.path.join(
+                self.minecraft_directory,
+                "profiles",
+                self.versions_combobox.currentText(),
+            )
+        ):
+            with open(
+                os.path.join(
+                    self.minecraft_directory,
+                    "profiles",
+                    self.versions_combobox.currentText(),
+                    "profile_info.json",
+                ),
+                encoding="utf-8",
+            ) as profile_info_file:
+                if "forge" in json.load(profile_info_file)[0]["mc_version"]:
+                    self.optifine_checkbox.setDisabled(False)
+                else:
+                    self.optifine_checkbox.setDisabled(True)
+        elif self.loaders_combobox.currentText() == "forge":
             self.optifine_checkbox.setDisabled(False)
         else:
             self.optifine_checkbox.setDisabled(True)
@@ -1238,7 +1258,7 @@ class MainWindow(QtWidgets.QMainWindow):
                     self.minecraft_directory,
                     self.mod_loader,
                     self.raw_version,
-                    self.optifine,
+                    self.optifine and self.optifine_checkbox.isEnabled(),
                     self.show_console,
                     self.nickname,
                     self.ely_uuid,
@@ -1359,6 +1379,7 @@ class MainWindow(QtWidgets.QMainWindow):
         )
         self.versions_combobox.setFixedHeight(30)
         self.versions_combobox.setEditable(True)
+        self.versions_combobox.currentIndexChanged.connect(self.block_optifine_checkbox)
 
         self.nickname_entry = QtWidgets.QLineEdit(self)
         self.nickname_entry.move(20, 60)
@@ -1377,10 +1398,11 @@ class MainWindow(QtWidgets.QMainWindow):
         self.loaders_combobox.move(160, 20)
         self.loaders_combobox.setFixedWidth(120)
         self.loaders_combobox.setCurrentText(self.mod_loader)
-        self.block_optifine_checkbox()
         self.loaders_combobox.currentIndexChanged.connect(self.block_optifine_checkbox)
         self.loaders_combobox.setFixedHeight(30)
         self.loaders_combobox.setEditable(True)
+
+        self.block_optifine_checkbox()
 
         self.start_button = QtWidgets.QPushButton(self)
         self.start_button.setText("Запуск")

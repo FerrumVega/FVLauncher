@@ -142,24 +142,16 @@ def download_injector(
     no_internet_connection: bool,
     queue: Queue,
 ):
-    queue.put(("status", "Загрузка injector..."))
-    logging.debug("Installing injector in launch")
-    json_path = os.path.join(
-        minecraft_directory,
-        "versions",
-        raw_version,
-        f"{raw_version}.json",
-    )
-    if not minecraft_launcher_lib.utils.is_vanilla_version(raw_version):
-        with open(json_path, encoding="utf-8") as file_with_downloads:
-            raw_version = json.load(file_with_downloads)["inheritsFrom"]
-    json_path = os.path.join(
-        minecraft_directory,
-        "versions",
-        raw_version,
-        f"{raw_version}.json",
-    )
     if not no_internet_connection:
+        queue.put(("status", "Загрузка injector..."))
+        logging.debug("Installing injector in launch")
+        json_path = os.path.join(
+            minecraft_directory,
+            "versions",
+            raw_version,
+            f"{raw_version}.json",
+        )
+
         authlib_version = None
         with open(json_path, encoding="utf-8") as file_with_downloads:
             for lib in json.load(file_with_downloads)["libraries"]:
@@ -296,7 +288,7 @@ def resolve_version_name(
                                 minecraft_directory, "profiles", v
                             )
                         }
-                    else:
+                    elif mod_loader == "vanilla":
                         queue.put(
                             (
                                 "show_message",
@@ -305,7 +297,17 @@ def resolve_version_name(
                                 "Версия игры, которую требует профиль/сборка некорректно установлена. Запуск невозможен.",
                             )
                         )
-                        return None, {"is_not_installed": True}
+                        return None, {"do_not_install": True}
+                    else:
+                        queue.put(
+                            (
+                                "show_message",
+                                "critical",
+                                "Ошибка запуска профиля/сборки",
+                                'Для запуска сборки/профиля выберите "vanilla" в списке загрузчиков модов',
+                            )
+                        )
+                        return None, {"do_not_install": True}
         else:
             return None, {}
 
@@ -315,7 +317,7 @@ def install_version(
     options,  # TODO
     minecraft_directory: str,
     mod_loader: str,
-    raw_version: str,
+    version: str,
     queue: Queue,
     no_internet_connection: bool,
 ):
@@ -341,7 +343,7 @@ def install_version(
             queue.put(("status", value))
 
     name_of_folder_with_version, other_info = resolve_version_name(
-        raw_version, mod_loader, minecraft_directory, queue
+        version, mod_loader, minecraft_directory, queue
     )
     if other_info and other_info.get("game_directory", None) is not None:
         options["gameDirectory"] = other_info["game_directory"]
@@ -349,11 +351,11 @@ def install_version(
         return name_of_folder_with_version, minecraft_directory, options
     elif (
         not no_internet_connection
-        and mod_loader_is_supported(raw_version, mod_loader)
-        and not other_info.get("is_not_installed", False)
+        and mod_loader_is_supported(version, mod_loader)
+        and not other_info.get("do_not_install", False)
     ):
         install_type(
-            raw_version,
+            version,
             minecraft_directory,
             callback={
                 "setProgress": lambda value: track_progress(value, "progress"),
@@ -362,7 +364,7 @@ def install_version(
             },
         )
         name_of_folder_with_version = resolve_version_name(
-            raw_version,
+            version,
             mod_loader,
             minecraft_directory,
             queue,
@@ -391,7 +393,7 @@ def install_version(
             )
             queue.put(("start_button", True))
             logging.error(
-                f"Error message showed in install_version: error after download {raw_version} version"
+                f"Error message showed in install_version: error after download {version} version"
             )
             return None
     elif no_internet_connection:
@@ -407,7 +409,7 @@ def install_version(
         logging.error(
             "Error message showed in install_version: cannot download version because there is not internet connection"
         )
-    elif not other_info.get("is_not_installed", False):
+    elif not other_info.get("do_not_install", False):
         queue.put(
             (
                 "show_message",
@@ -418,7 +420,7 @@ def install_version(
         )
         queue.put(("start_button", True))
         logging.error(
-            f"Error message showed in install_version: mod loader {mod_loader} is not supported on the {raw_version} version"
+            f"Error message showed in install_version: mod loader {mod_loader} is not supported on the {version} version"
         )
 
 
@@ -468,7 +470,7 @@ def download_optifine(
 def launch(
     minecraft_directory: str,
     mod_loader: str,
-    raw_version: str,
+    version: str,
     optifine: bool,
     show_console: bool,
     nickname: str,
@@ -487,21 +489,71 @@ def launch(
         options,
         minecraft_directory,
         mod_loader,
-        raw_version,
+        version,
         queue,
         no_internet_connection,
     )
     if launch_info is not None:
-        version, minecraft_directory, options = launch_info
+        version_to_launch, minecraft_directory, options = launch_info
         queue.put(("progressbar", 100))
 
-        optifine_path = os.path.join(minecraft_directory, "mods", "optifine.jar")
+        if not no_internet_connection:
+            json_path = os.path.join(
+                minecraft_directory, "versions", version, f"{version}.json"
+            )
+            if not minecraft_launcher_lib.utils.is_vanilla_version(
+                version
+            ) and os.path.isfile(json_path):
+                with open(json_path, encoding="utf-8") as file_with_downloads:
+                    raw_version = json.load(file_with_downloads)["inheritsFrom"]
+                    optifine_path = os.path.join(
+                        minecraft_directory, "mods", "optifine.jar"
+                    )
+            elif os.path.isfile(
+                os.path.join(
+                    minecraft_directory, "profiles", version, "profile_info.json"
+                )
+            ):
+                with open(
+                    os.path.join(
+                        minecraft_directory,
+                        "profiles",
+                        version,
+                        "profile_info.json",
+                    )
+                ) as profile_info_file:
+                    version_with_loader = json.load(profile_info_file)[0]["mc_version"]
+                    with open(
+                        os.path.join(
+                            minecraft_directory,
+                            "versions",
+                            version_with_loader,
+                            f"{version_with_loader}.json",
+                        ),
+                        encoding="utf-8",
+                    ) as file_with_downloads:
+                        raw_version = json.load(file_with_downloads)["inheritsFrom"]
+                        optifine_path = os.path.join(
+                            minecraft_directory,
+                            "profiles",
+                            version,
+                            "mods",
+                            "optifine.jar",
+                        )
+            else:
+                raw_version = version
+                optifine_path = os.path.join(
+                    minecraft_directory, "mods", "optifine.jar"
+                )
+        else:
+            raw_version = version
+            optifine_path = os.path.join(minecraft_directory, "mods", "optifine.jar")
 
         if not os.path.isdir(os.path.join(minecraft_directory, "mods")):
             os.mkdir(os.path.join(minecraft_directory, "mods"))
         if os.path.isfile(optifine_path):
             os.remove(optifine_path)
-        if optifine and mod_loader == "forge":
+        if optifine:
             download_optifine(optifine_path, raw_version, queue, no_internet_connection)
         download_injector(
             raw_version, minecraft_directory, no_internet_connection, queue
@@ -512,7 +564,7 @@ def launch(
             popen_kwargs["creationflags"] = subprocess.CREATE_NO_WINDOW
         minecraft_process = subprocess.Popen(
             minecraft_launcher_lib.command.get_minecraft_command(
-                version, minecraft_directory, options
+                version_to_launch, minecraft_directory, options
             ),
             cwd=minecraft_directory,
             **popen_kwargs,
@@ -634,4 +686,4 @@ def start_rich_presence(
 
 CLIENT_ID = "1399428342117175497"
 start_launcher_time = int(time.time())
-LAUNCHER_VERSION = "v5.9"
+LAUNCHER_VERSION = "v6.0"
