@@ -13,6 +13,7 @@ import logging
 import multiprocessing
 from faker import Faker
 from typing import Dict, Union, Any
+import traceback
 
 import utils
 import updater
@@ -24,6 +25,15 @@ logging.basicConfig(
     format="%(asctime)s %(levelname)s %(message)s",
 )
 logging.debug("Program started its work")
+
+
+def log_exception(exception_info: str):
+    logging.critical(f"There was an error:\n{exception_info}")
+    QtWidgets.QMessageBox.critical(
+        utils.app.activeWindow(),
+        utils.app.tr("Ошибка"),
+        f"Произошла непредвиденная ошибка:\n{exception_info}",
+    )
 
 
 def load_config():
@@ -90,7 +100,7 @@ class ProjectsSearch(QtWidgets.QDialog):
             class ProjectInstallWindow(QtWidgets.QDialog):
                 def __init__(
                     self,
-                    parent: QtWidgets.QDialog,
+                    parent: QtWidgets.QWidget,
                     project: Dict[Any, Any],
                     mc_version: str,
                     loader: str,
@@ -107,11 +117,24 @@ class ProjectsSearch(QtWidgets.QDialog):
 
                 def _update_ui_from_queue(self):
                     while not self.queue.empty():
-                        var, value, *exception_info = self.queue.get_nowait()
+                        var, value, *other_info = self.queue.get_nowait()
                         if var == "progressbar":
                             self.progressbar.setValue(value)
                         elif var == "log_exception":
-                            utils.log_exception(*exception_info)
+                            log_exception(*other_info)
+                        elif var == "show_message":
+                            if value == "critical":
+                                QtWidgets.QMessageBox.critical(
+                                    self, other_info[1], other_info[2]
+                                )
+                            elif value == "warning":
+                                QtWidgets.QMessageBox.warning(
+                                    self, other_info[1], other_info[2]
+                                )
+                            elif value == "information":
+                                QtWidgets.QMessageBox.information(
+                                    self, other_info[0], other_info[1]
+                                )
 
                 def download_project_process(
                     self,
@@ -312,7 +335,7 @@ class ProjectsSearch(QtWidgets.QDialog):
 
             def __init__(
                 self,
-                parent: QtWidgets.QDialog,
+                parent: QtWidgets.QWidget,
                 project: Dict[Any, Any],
                 mc_version: str,
                 minecraft_directory: str,
@@ -360,7 +383,7 @@ class ProjectsSearch(QtWidgets.QDialog):
                 self.show()
 
         def __init__(
-            self, parent: QtWidgets.QDialog, project_id: int, minecraft_directory: str
+            self, parent: QtWidgets.QWidget, project_id: int, minecraft_directory: str
         ):
             super().__init__(parent)
             self.minecraft_directory = minecraft_directory
@@ -431,7 +454,7 @@ class ProjectsSearch(QtWidgets.QDialog):
 
             self.show()
 
-    def __init__(self, main_window: QtWidgets.QMainWindow, minecraft_directory: str):
+    def __init__(self, main_window: QtWidgets.QWidget, minecraft_directory: str):
         super().__init__(main_window)
         self.minecraft_directory = minecraft_directory
         self._make_ui()
@@ -485,7 +508,7 @@ class ProjectsSearch(QtWidgets.QDialog):
 
 
 class SettingsWindow(QtWidgets.QDialog):
-    def __init__(self, main_window: QtWidgets.QMainWindow):
+    def __init__(self, main_window: QtWidgets.QWidget):
         super().__init__(main_window)
         self._make_ui()
 
@@ -642,12 +665,12 @@ class SettingsWindow(QtWidgets.QDialog):
 
 
 class AccountWindow(QtWidgets.QDialog):
-    def __init__(self, main_window: QtWidgets.QMainWindow):
+    def __init__(self, main_window: QtWidgets.QWidget):
         super().__init__(main_window)
         self._make_ui()
 
     class SkinChanger(QtWidgets.QDialog):
-        def __init__(self, parent: QtWidgets.QDialog):
+        def __init__(self, parent: QtWidgets.QWidget):
             super().__init__(parent)
             self._make_ui()
 
@@ -789,7 +812,7 @@ class AccountWindow(QtWidgets.QDialog):
 
 class ProfilesWindow(QtWidgets.QDialog):
     class CreateOwnProfile(QtWidgets.QDialog):
-        def __init__(self, parent: QtWidgets.QDialog):
+        def __init__(self, parent: QtWidgets.QWidget):
             super().__init__(parent)
             self._make_ui()
 
@@ -900,7 +923,7 @@ class ProfilesWindow(QtWidgets.QDialog):
 
             self.show()
 
-    def __init__(self, main_window: QtWidgets.QMainWindow):
+    def __init__(self, main_window: QtWidgets.QWidget):
         super().__init__(main_window)
         self._make_ui()
 
@@ -911,7 +934,7 @@ class ProfilesWindow(QtWidgets.QDialog):
 
     def _update_ui_from_queue(self):
         while not self.queue.empty():
-            var, value, *exception_info = self.queue.get_nowait()
+            var, value, *other_info = self.queue.get_nowait()
             if var == "status":
                 self.mrpack_import_status.setText(value)
             elif "show_versions":
@@ -924,7 +947,16 @@ class ProfilesWindow(QtWidgets.QDialog):
                     main_window.versions_combobox.currentText(),
                 )
             elif var == "log_exception":
-                utils.log_exception(*exception_info)
+                log_exception(*other_info)
+            elif var == "show_message":
+                if value == "critical":
+                    QtWidgets.QMessageBox.critical(self, other_info[0], other_info[1])
+                elif value == "warning":
+                    QtWidgets.QMessageBox.warning(self, other_info[0], other_info[1])
+                elif value == "information":
+                    QtWidgets.QMessageBox.information(
+                        self, other_info[0], other_info[1]
+                    )
 
     def _handle_open_mrpack_choosing_window(self):
         mrpack_path = QtWidgets.QFileDialog.getOpenFileName(
@@ -977,10 +1009,32 @@ class ProfilesWindow(QtWidgets.QDialog):
 
 
 class MainWindow(QtWidgets.QMainWindow):
+    class ShowLogWindow(QtWidgets.QDialog):
+        def __init__(self, parent: QtWidgets.QWidget, path: str):
+            super().__init__(parent)
+            self.path = path
+            self._make_ui()
+
+        def _make_ui(self):
+            self.setWindowTitle("Просмотр лога")
+            self.setFixedSize(700, 700)
+            self.log_text = QtWidgets.QPlainTextEdit(self)
+            self.log_text.setFixedSize(700, 700)
+            self.log_text.setReadOnly(True)
+            self.log_text.setTextInteractionFlags(
+                Qt.TextInteractionFlag.TextSelectableByMouse
+                | Qt.TextInteractionFlag.TextSelectableByKeyboard
+                | Qt.TextInteractionFlag.LinksAccessibleByMouse
+            )
+            with open(self.path, encoding="utf-8") as log_file:
+                self.log_text.setPlainText(log_file.read())
+            self.show()
+
     def check_java(self):
         self.java_path = minecraft_launcher_lib.utils.get_java_executable()
         if self.java_path == "java" or self.java_path == "javaw":
-            utils.gui_messenger.critical.emit(
+            QtWidgets.QMessageBox.critical(
+                self,
                 "Java не найдена",
                 "На вашем компьютере отсутствует java, загрузите её с github лаунчера.",
             )
@@ -1004,7 +1058,28 @@ class MainWindow(QtWidgets.QMainWindow):
                 elif value == "minecraft_closed":
                     utils.start_rich_presence(rpc)
             elif var == "log_exception":
-                utils.log_exception(*other_info)
+                log_exception(*other_info)
+            elif var == "show_message":
+                if value == "critical":
+                    QtWidgets.QMessageBox.critical(self, other_info[0], other_info[1])
+                elif value == "warning":
+                    QtWidgets.QMessageBox.warning(self, other_info[0], other_info[1])
+                elif value == "information":
+                    QtWidgets.QMessageBox.information(
+                        self, other_info[0], other_info[1]
+                    )
+                elif value == "log":
+                    if (
+                        QtWidgets.QMessageBox.critical(
+                            self,
+                            other_info[0],
+                            other_info[1],
+                            QtWidgets.QMessageBox.StandardButton.Yes
+                            | QtWidgets.QMessageBox.StandardButton.No,
+                        )
+                        == QtWidgets.QMessageBox.StandardButton.Yes
+                    ):
+                        self.ShowLogWindow(self, other_info[2])
 
     def __init__(
         self,
@@ -1040,6 +1115,16 @@ class MainWindow(QtWidgets.QMainWindow):
         self.allow_experiments = allow_experiments
         self.hover_color = hover_color
 
+        sys.excepthook = (
+            lambda exception_type, exception, exception_traceback: log_exception(
+                "".join(
+                    traceback.format_exception(
+                        exception_type, exception, exception_traceback
+                    )
+                )
+            )
+        )
+
         super().__init__()
         if self.check_java():
             self.save_config_on_close = True
@@ -1049,11 +1134,11 @@ class MainWindow(QtWidgets.QMainWindow):
             self.close()
 
     def closeEvent(self, event: QtGui.QCloseEvent):
-        self.optifine = self.optifine_checkbox.isChecked()
-        self.mod_loader = self.loaders_combobox.currentText()
-        self.raw_version = self.versions_combobox.currentText()
-        self.nickname = self.nickname_entry.text()
         if self.save_config_on_close:
+            self.optifine = self.optifine_checkbox.isChecked()
+            self.mod_loader = self.loaders_combobox.currentText()
+            self.raw_version = self.versions_combobox.currentText()
+            self.nickname = self.nickname_entry.text()
             self.save_config()
         logging.debug("Launcher was closed")
         return super().closeEvent(event)
@@ -1228,28 +1313,14 @@ class MainWindow(QtWidgets.QMainWindow):
         #     }}
         # """
         # )
+
         # print(utils.app.palette().accent().color().name())
 
-        #           .__....._             _.....__,
-        #              .": o :':         ;': o :".
-        #              `. `-' .'.       .'. `-' .'
-        #                `---'             `---'
-        #
-        #      _...----...      ...   ...      ...----..._
-        #   .-'__..-""'----    `.  `"`  .'    ----'""-..__`-.
-        #  '.-'   _.--"""'       `-._.-'       '"""--._   `-.`
-        #  '  .-"'                  :                  `"-.  `
-        #    '   `.              _.'"'._              .'   `
-        #          `.       ,.-'"       "'-.,       .'
-        #            `.                           .'
-        #              `-._                   _.-'
-        #                  `"'--...___...--'"`
-
         self.setWindowTitle("FVLauncher")
-        self.is_authorized = None
         self.setWindowIcon(utils.window_icon)
-
         self.setFixedSize(300, 500)
+
+        self.is_authorized = None
 
         self.raw_version = self.chosen_version
         self.mod_loader = self.chosen_mod_loader
@@ -1403,7 +1474,6 @@ class MainWindow(QtWidgets.QMainWindow):
 
 
 if __name__ == "__main__":
-    utils.gui_messenger.setParent(utils.app)
     multiprocessing.freeze_support()
     config = load_config()
     main_window = MainWindow(
@@ -1423,5 +1493,4 @@ if __name__ == "__main__":
         config["allow_experiments"],
         config["hover_color"],
     )
-    utils.gui_messenger.setParent(main_window)
     sys.exit(utils.app.exec())

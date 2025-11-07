@@ -9,7 +9,6 @@ import optipy
 import time
 import sys
 import traceback
-from PySide6.QtCore import QObject, Signal
 from typing import Dict, Union, Callable, Any, Optional, Tuple
 from pypresence.presence import Presence
 from multiprocessing.queues import Queue
@@ -26,19 +25,6 @@ window_icon = QtGui.QIcon(
             "minecraft_title.png",
         )
     )
-)
-
-
-def log_exception(exception_info: str):
-    logging.critical(f"There was an error:\n{exception_info}")
-    gui_messenger.critical.emit(
-        "Ошибка",
-        f"Произошла непредвиденная ошибка:\n{exception_info}",
-    )
-
-
-sys.excepthook = lambda exception_type, exception, exception_traceback: log_exception(
-    "".join(traceback.format_exception(exception_type, exception, exception_traceback))
 )
 
 
@@ -61,54 +47,6 @@ def run_in_process_with_exceptions_logging(
         )
         if is_game_launch_process:
             queue.put(("start_button", True))
-
-
-class GuiMessenger(QObject):
-    warning = Signal(str, str)
-    critical = Signal(str, str)
-    info = Signal(str, str)
-    log = Signal(str, str, str)
-
-    def emit_msg(
-        self,
-        t: str,
-        m: str,
-        icon_type: QtWidgets.QMessageBox.Icon,
-        directory: Optional[str] = None,
-    ):
-        global window_icon
-        msg = QtWidgets.QMessageBox()
-        msg.setWindowTitle(t)
-        msg.setText(m)
-        msg.setWindowIcon(window_icon)
-        msg.setIcon(icon_type)
-        if directory is not None:
-            msg.setStandardButtons(
-                QtWidgets.QMessageBox.StandardButton.Yes
-                | QtWidgets.QMessageBox.StandardButton.No
-            )
-            if msg.exec() == QtWidgets.QMessageBox.StandardButton.Yes:
-                os.startfile(os.path.join(directory, "logs", "latest.log"))
-        else:
-            msg.exec()
-
-    def __init__(self):
-        super().__init__(app)
-        self.warning.connect(
-            lambda t, m: self.emit_msg(t, m, QtWidgets.QMessageBox.Icon.Warning)
-        )
-        self.critical.connect(
-            lambda t, m: self.emit_msg(t, m, QtWidgets.QMessageBox.Icon.Critical)
-        )
-        self.info.connect(
-            lambda t, m: self.emit_msg(t, m, QtWidgets.QMessageBox.Icon.Information)
-        )
-        self.log.connect(
-            lambda t, m, d: self.emit_msg(t, m, QtWidgets.QMessageBox.Icon.Critical, d)
-        )
-
-
-gui_messenger = GuiMessenger()
 
 
 def boolean_to_sign_status(is_authorized: Optional[bool]):
@@ -165,31 +103,14 @@ def download_profile_from_mrpack(
             "w",
             encoding="utf-8",
         ).close()
-        if (
-            download_injector(
-                minecraft_launcher_lib.mrpack.get_mrpack_information(mrpack_path)[
-                    "minecraftVersion"
-                ],
-                minecraft_directory,
-                no_internet_connection,
-            )
-            == "InjectorNotDownloaded"
-        ):
-            open(
-                os.path.join(
-                    minecraft_directory,
-                    "versions",
-                    minecraft_launcher_lib.mrpack.get_mrpack_launch_version(
-                        mrpack_path
-                    ),
-                    "injector_not_downloaded.FVL",
-                ),
-                "w",
-                encoding="utf-8",
-            ).close()
         queue.put(("show_versions", None))
-        gui_messenger.info.emit(
-            "Сборка установлена", f"Сборка {profile_name} была успешно установлена!"
+        queue.put(
+            (
+                "show_message",
+                "information",
+                "Сборка установлена",
+                f"Сборка {profile_name} была успешно установлена!",
+            )
         )
 
 
@@ -216,8 +137,13 @@ def prepare_installation_parameters(
 
 
 def download_injector(
-    raw_version: str, minecraft_directory: str, no_internet_connection: bool
+    raw_version: str,
+    minecraft_directory: str,
+    no_internet_connection: bool,
+    queue: Queue,
 ):
+    queue.put(("status", "Загрузка injector..."))
+    logging.debug("Installing injector in launch")
     json_path = os.path.join(
         minecraft_directory,
         "versions",
@@ -271,25 +197,38 @@ def download_injector(
                         logging.debug(f"Installed patched authlib {maven_version.text}")
                     break
             else:
-                gui_messenger.warning.emit(
-                    "Ошибка скина",
-                    "Для данной версии ещё не вышла патченая authlib, обычна она выходит в течении пяти дней после выхода версии.",
+                queue.put(
+                    (
+                        "show_message",
+                        "warning",
+                        "Ошибка скина",
+                        "Для данной версии ещё не вышла патченая authlib, обычна она выходит в течении пяти дней после выхода версии.",
+                    )
                 )
                 logging.warning(
                     f"Warning message showed in download_injector: skin error, there is not patched authlib for {raw_version} version"
                 )
                 return "InjectorNotDownloaded"
         else:
-            gui_messenger.warning.emit(
-                "Ошибка скина",
-                "На данной версии нет authlib, скины не поддерживаются.",
+            queue.put(
+                (
+                    "show_message",
+                    "warning",
+                    "Ошибка скина",
+                    "На данной версии нет authlib, скины не поддерживаются.",
+                )
             )
             logging.warning(
                 f"Warning message showed in download_injector: skins not supported on {raw_version} version"
             )
     else:
-        gui_messenger.warning.emit(
-            "Ошибка скина", "Отсутсвует подключение к интернету."
+        queue.put(
+            (
+                "show_message",
+                "warning",
+                "Ошибка скина",
+                "Отсутсвует подключение к интернету.",
+            )
         )
         logging.warning(
             "Warning message showed in download_injector: skin error, no internet connection"
@@ -300,6 +239,7 @@ def resolve_version_name(
     version: str,
     mod_loader: str,
     minecraft_directory: str,
+    queue: Queue,
     ignore_installed_file: bool = False,
 ) -> Tuple[Union[None, str], Dict[str, bool | str]]:
     other_loaders = ["fabric", "forge", "quilt", "neoforge", "vanilla"]
@@ -349,7 +289,7 @@ def resolve_version_name(
                 with open(profile_info_path, encoding="utf-8") as profile_info_file:
                     vanilla_version = json.load(profile_info_file)[0]["mc_version"]
                     if resolve_version_name(
-                        vanilla_version, mod_loader, minecraft_directory
+                        vanilla_version, mod_loader, minecraft_directory, queue
                     )[0]:
                         return vanilla_version, {
                             "game_directory": os.path.join(
@@ -357,11 +297,15 @@ def resolve_version_name(
                             )
                         }
                     else:
-                        gui_messenger.critical.emit(
-                            "Ошибка запуска профиля/сборки",
-                            "Версия игры, которую требует профиль/сборка некорректно установлена. Запуск невозможен.",
+                        queue.put(
+                            (
+                                "show_message",
+                                "critical",
+                                "Ошибка запуска профиля/сборки",
+                                "Версия игры, которую требует профиль/сборка некорректно установлена. Запуск невозможен.",
+                            )
                         )
-                        return None, {"do_not_install": True}
+                        return None, {"is_not_installed": True}
         else:
             return None, {}
 
@@ -397,45 +341,16 @@ def install_version(
             queue.put(("status", value))
 
     name_of_folder_with_version, other_info = resolve_version_name(
-        raw_version, mod_loader, minecraft_directory
+        raw_version, mod_loader, minecraft_directory, queue
     )
     if other_info and other_info.get("game_directory", None) is not None:
         options["gameDirectory"] = other_info["game_directory"]
     if name_of_folder_with_version is not None:
-        if os.path.isfile(
-            os.path.join(
-                minecraft_directory,
-                "versions",
-                name_of_folder_with_version,
-                "injector_not_downloaded.FVL",
-            )
-        ):
-            queue.put(("status", "Загрузка injector..."))
-            if (
-                download_injector(
-                    name_of_folder_with_version,
-                    minecraft_directory,
-                    no_internet_connection,
-                )
-                is None
-            ):
-                os.remove(
-                    os.path.join(
-                        minecraft_directory,
-                        "versions",
-                        name_of_folder_with_version,
-                        "injector_not_downloaded.FVL",
-                    )
-                )
-                logging.debug(
-                    "Inector installed and injector_not_downloaded.FVL deleted"
-                )
-
         return name_of_folder_with_version, minecraft_directory, options
     elif (
         not no_internet_connection
         and mod_loader_is_supported(raw_version, mod_loader)
-        and not other_info.get("do_not_install", False)
+        and not other_info.get("is_not_installed", False)
     ):
         install_type(
             raw_version,
@@ -447,7 +362,11 @@ def install_version(
             },
         )
         name_of_folder_with_version = resolve_version_name(
-            raw_version, mod_loader, minecraft_directory, ignore_installed_file=True
+            raw_version,
+            mod_loader,
+            minecraft_directory,
+            queue,
+            ignore_installed_file=True,
         )[0]
         if name_of_folder_with_version is not None:
             open(
@@ -460,31 +379,15 @@ def install_version(
                 "w",
                 encoding="utf-8",
             ).close()
-            queue.put(("status", "Загрузка injector..."))
-            logging.debug("Installing injector in launch")
-            if (
-                download_injector(
-                    name_of_folder_with_version,
-                    minecraft_directory,
-                    no_internet_connection,
-                )
-                == "InjectorNotDownloaded"
-            ):
-                open(
-                    os.path.join(
-                        minecraft_directory,
-                        "versions",
-                        name_of_folder_with_version,
-                        "injector_not_downloaded.FVL",
-                    ),
-                    "w",
-                    encoding="utf-8",
-                ).close()
             return name_of_folder_with_version, minecraft_directory, options
         else:
-            gui_messenger.critical.emit(
-                "Ошибка загрузки",
-                "Произошла непредвиденная ошибка во время загрузки версии.",
+            queue.put(
+                (
+                    "show_message",
+                    "critical",
+                    "Ошибка загрузки",
+                    "Произошла непредвиденная ошибка во время загрузки версии.",
+                )
             )
             queue.put(("start_button", True))
             logging.error(
@@ -492,18 +395,26 @@ def install_version(
             )
             return None
     elif no_internet_connection:
-        gui_messenger.critical.emit(
-            "Ошибка подключения",
-            "Вы в оффлайн-режиме. Версия отсутсвует на вашем компьютере, загрузка невозможна. Попробуйте перезапустить лаунчер.",
+        queue.put(
+            (
+                "show_message",
+                "critical",
+                "Ошибка подключения",
+                "Вы в оффлайн-режиме. Версия отсутсвует на вашем компьютере, загрузка невозможна. Попробуйте перезапустить лаунчер.",
+            )
         )
         queue.put(("start_button", True))
         logging.error(
             "Error message showed in install_version: cannot download version because there is not internet connection"
         )
-    elif not other_info.get("do_not_install", False):
-        gui_messenger.critical.emit(
-            "Ошибка",
-            "Для данной версии нет выбранного вами загрузчика модов.",
+    elif not other_info.get("is_not_installed", False):
+        queue.put(
+            (
+                "show_message",
+                "critical",
+                "Ошибка",
+                "Для данной версии нет выбранного вами загрузчика модов.",
+            )
         )
         queue.put(("start_button", True))
         logging.error(
@@ -512,7 +423,10 @@ def install_version(
 
 
 def download_optifine(
-    optifine_path: str, raw_version: str, queue: Queue, no_internet_connection: bool
+    optifine_path: str,
+    raw_version: str,
+    queue: Queue,
+    no_internet_connection: bool,
 ):
     if not no_internet_connection:
         url = None
@@ -526,16 +440,25 @@ def download_optifine(
                     r.raise_for_status()
                     optifine_jar.write(r.content)
         else:
-            gui_messenger.warning.emit(
-                "Запуск без optifine",
-                "Optifine недоступен на выбранной вами версии.",
+            queue.put(
+                (
+                    "show_message",
+                    "warning",
+                    "Запуск без optifine",
+                    "Optifine недоступен на выбранной вами версии.",
+                )
             )
             logging.warning(
                 f"Warning message showed in download_optifine: optifine is not support on {raw_version} version"
             )
     else:
-        gui_messenger.warning.emit(
-            "Ошибка optifine", "Отсутсвует подключение к интернету."
+        queue.put(
+            (
+                "show_message",
+                "warning",
+                "Ошибка optifine",
+                "Отсутсвует подключение к интернету.",
+            )
         )
         logging.warning(
             "Warning message showed in download_optifine: optifine error, no internet connection"
@@ -580,6 +503,9 @@ def launch(
             os.remove(optifine_path)
         if optifine and mod_loader == "forge":
             download_optifine(optifine_path, raw_version, queue, no_internet_connection)
+        download_injector(
+            raw_version, minecraft_directory, no_internet_connection, queue
+        )
         logging.debug(f"Launching {version} version")
         popen_kwargs = {}
         if not show_console:
@@ -604,11 +530,15 @@ def launch(
         )
         minecraft_return_code = minecraft_process.wait()
         if minecraft_return_code != 0:
-            gui_messenger.log.emit(
-                "Игра была закрыта с ошибкой",
-                f"Minecraft вернул ошибку (крашнулся). Код ошибки: {minecraft_return_code}<br>"
-                "Вы хотите открыть лог?",
-                minecraft_directory,
+            queue.put(
+                (
+                    "show_message",
+                    "log",
+                    "Игра была закрыта с ошибкой",
+                    f"Minecraft вернул ошибку (крашнулся). Код ошибки: {minecraft_return_code}<br>"
+                    "Вы хотите открыть лог?",
+                    os.path.join(minecraft_directory, "logs", "latest.log"),
+                )
             )
         queue.put(("start_rich_presence", "minecraft_closed"))
         queue.put(("status", ""))
@@ -641,7 +571,12 @@ def only_project_install(
             for chunk in r.iter_content(chunk_size=chunk_size):
                 if chunk:
                     bytes_downloaded += chunk_size
-                    queue.put(min(100, int(bytes_downloaded / project_size * 100)))
+                    queue.put(
+                        (
+                            "progressbar",
+                            min(100, int(bytes_downloaded / project_size * 100)),
+                        )
+                    )
                     project_file.write(chunk)
     with open(profile_info_path, encoding="utf-8") as profile_info_file:
         profile_info = json.load(profile_info_file)
@@ -649,9 +584,13 @@ def only_project_install(
         profile_info[1].append([project_version, project])
         with open(profile_info_path, "w", encoding="utf-8") as profile_info_file:
             json.dump(profile_info, profile_info_file, indent=4)
-    gui_messenger.info.emit(
-        "Проект установлен",
-        f"Проект {project['title']} был успешно установлен.",
+    queue.put(
+        (
+            "show_message",
+            "information",
+            "Проект установлен",
+            f"Проект {project['title']} был успешно установлен.",
+        )
     )
 
 
@@ -695,4 +634,4 @@ def start_rich_presence(
 
 CLIENT_ID = "1399428342117175497"
 start_launcher_time = int(time.time())
-LAUNCHER_VERSION = "v5.8"
+LAUNCHER_VERSION = "v5.9"
