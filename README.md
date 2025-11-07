@@ -33,14 +33,16 @@ NOT AN OFFICIAL MINECRAFT PRODUCT. NOT APPROVED BY OR ASSOCIATED WITH MOJANG OR 
 ## Скриншоты
 
 ![Главное окно](screenshots/MainWindow.png)
-![Настройки](screenshots/SettingsWindow.png)
-![Аккаунт для системы скинов](screenshots/AccountWindow.png)
-![Поиск проектов](screenshots/ProjectsSearch.png)
-![Версии проектов](screenshots/ProjectVersions.png)
-![Загрузчики модов проекта](screenshots/ProjectLoaders.png)
-![Выбор профиля для установки проекта](screenshots/ProfileChooserForProjectDownload.png)
-![Создание/импорт профиля/сборки](screenshots/Create%20or%20import%20profile%20or%20mrpack.png)
-![Создание профиля](screenshots/CreateProfile.png)
+![Поиск проектов на Modrinth](screenshots/ProjectsSearch.png)
+![Информация о проекте](screenshots/ProjectInfoWindow.png)
+![Загрузчики модов проекта](screenshots/ProjectLoadersChooseWindow.png)
+![Выбор профиля для установки проекта](screenshots/ProjectInstallWindow.png)
+![Настройки лаунчера](screenshots/SettingsWindow.png)
+![Аккаунт ely.by](screenshots/AccountWindow.png)
+![Изменение скина](screenshots/SkinChanger.png)
+![Создание/импорт профиля/сборки](screenshots/ProfilesWindow.png)
+![Создание профиля](screenshots/CreateOwnProfile.png)
+![Окно с логом игры](screenshots/ShowLogWindow.png)
 
 ## Клонирование репозитория
 

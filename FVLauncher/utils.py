@@ -193,7 +193,7 @@ def download_injector(
                     (
                         "show_message",
                         "warning",
-                        "Ошибка скина",
+                        "Ошибка authlib",
                         "Для данной версии ещё не вышла патченая authlib, обычна она выходит в течении пяти дней после выхода версии.",
                     )
                 )
@@ -206,8 +206,8 @@ def download_injector(
                 (
                     "show_message",
                     "warning",
-                    "Ошибка скина",
-                    "На данной версии нет authlib, скины не поддерживаются.",
+                    "Ошибка authlib",
+                    "На данной версии нет authlib, скины и авторизация не поддерживаются.",
                 )
             )
             logging.warning(
@@ -218,7 +218,7 @@ def download_injector(
             (
                 "show_message",
                 "warning",
-                "Ошибка скина",
+                "Ошибка authlib",
                 "Отсутсвует подключение к интернету.",
             )
         )
@@ -686,4 +686,4 @@ def start_rich_presence(
 
 CLIENT_ID = "1399428342117175497"
 start_launcher_time = int(time.time())
-LAUNCHER_VERSION = "v6.0"
+LAUNCHER_VERSION = "v6.0.1"

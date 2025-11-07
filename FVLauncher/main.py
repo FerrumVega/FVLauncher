@@ -96,7 +96,7 @@ class ClickableLabel(QtWidgets.QLabel):
 
 class ProjectsSearch(QtWidgets.QDialog):
     class ProjectInfoWindow(QtWidgets.QDialog):
-        class ProjectVersionInfoWindow(QtWidgets.QDialog):
+        class ProjectLoadersChooseWindow(QtWidgets.QDialog):
             class ProjectInstallWindow(QtWidgets.QDialog):
                 def __init__(
                     self,
@@ -446,7 +446,7 @@ class ProjectsSearch(QtWidgets.QDialog):
             for mc_version in mc_versions[::-1]:
                 w = ClickableLabel(text=mc_version)
                 w.clicked.connect(
-                    lambda current_mc_version=mc_version: self.ProjectVersionInfoWindow(
+                    lambda current_mc_version=mc_version: self.ProjectLoadersChooseWindow(
                         self, self.project, current_mc_version, self.minecraft_directory
                     )
                 )
@@ -712,7 +712,9 @@ class AccountWindow(QtWidgets.QDialog):
                 main_window.access_token = data.json()["accessToken"]
                 main_window.ely_uuid = data.json()["user"]["id"]
                 QtWidgets.QMessageBox.information(
-                    self, "Поздравляем!", "Теперь вы будете видеть свой скин в игре."
+                    self,
+                    "Поздравляем!",
+                    "Теперь вы будете автоматически авторизованы на серверах, которые используют систему авторизации ely.by.",
                 )
                 logging.info(
                     "Info message showed in login: ely skin will be shown in game"
@@ -762,7 +764,7 @@ class AccountWindow(QtWidgets.QDialog):
                     f"Error message showed in signout: sign out error, {data.json()['errorMessage']}"
                 )
 
-        self.setWindowTitle("Настройки")
+        self.setWindowTitle("Аккаунт")
         self.setFixedSize(300, 500)
         self.setModal(True)
 
@@ -860,7 +862,7 @@ class ProfilesWindow(QtWidgets.QDialog):
                     )
                     QtWidgets.QMessageBox.information(
                         self,
-                        "Создание папки профиля",
+                        "Создание профиля",
                         f"Папка профиль успешно создана по пути {profile_path}",
                     )
                 elif not version_installed:
@@ -877,7 +879,7 @@ class ProfilesWindow(QtWidgets.QDialog):
                     )
 
             self.setModal(True)
-            self.setWindowTitle("Создание папки профиля")
+            self.setWindowTitle("Создание профиля")
             self.setFixedSize(300, 150)
 
             self.profile_name_entry = QtWidgets.QLineEdit(self)
@@ -1216,12 +1218,15 @@ class MainWindow(QtWidgets.QMainWindow):
             parser.write(config_file)
 
     def block_optifine_checkbox(self, *args: Any):
-        if os.path.isdir(
-            os.path.join(
-                self.minecraft_directory,
-                "profiles",
-                self.versions_combobox.currentText(),
+        if (
+            os.path.isdir(
+                os.path.join(
+                    self.minecraft_directory,
+                    "profiles",
+                    self.versions_combobox.currentText(),
+                )
             )
+            and self.versions_combobox.currentText()
         ):
             with open(
                 os.path.join(
