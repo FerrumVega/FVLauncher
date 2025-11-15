@@ -1,11 +1,10 @@
 import minecraft_launcher_lib
 from PySide6 import QtWidgets, QtGui, QtWebEngineWidgets, QtWebEngineCore
-from PySide6.QtCore import Signal, Qt, QTimer
+from PySide6.QtCore import Signal, Qt, QTimer, QUrl
 import os
 import sys
 import requests
 import configparser
-import uuid
 import json
 from pypresence.presence import Presence
 import pypresence.exceptions
@@ -21,19 +20,23 @@ import updater
 logging.basicConfig(
     level=logging.DEBUG,
     filename="FVLauncher.log",
-    filemode="w",
+    filemode="a",
     format="%(asctime)s %(levelname)s %(message)s",
 )
-logging.debug("Program started its work")
 
 
 def log_exception(exception_info: str):
     logging.critical(f"There was an error:\n{exception_info}")
     QtWidgets.QMessageBox.critical(
         utils.app.activeWindow(),
-        utils.app.tr("Ошибка"),
+        "Ошибка",
         f"Произошла непредвиденная ошибка:\n{exception_info}",
     )
+
+
+sys.excepthook = lambda exception_type, exception, exception_traceback: log_exception(
+    "".join(traceback.format_exception(exception_type, exception, exception_traceback))
+)
 
 
 def load_config():
@@ -44,12 +47,16 @@ def load_config():
         "java_arguments": "",
         "optifine": "1",
         "access_token": "",
-        "ely_uuid": "",
+        "game_uuid": "",
+        "refresh_token": "",
+        "launch_account_type": "Ely.by",
         "show_console": "0",
         "show_old_alphas": "0",
         "show_old_betas": "0",
         "show_snapshots": "0",
         "show_releases": "1",
+        "show_other_versions": "1",
+        "show_profiles_and_packs": "1",
         "minecraft_directory": "",
         "allow_experiments": "0",
         "hover_color": "",
@@ -291,20 +298,24 @@ class ProjectsSearch(QtWidgets.QDialog):
                     self.setWindowTitle("Выбор профиля для загрузки проекта")
                     self.setFixedSize(300, 500)
 
-                    start_y_coord = 30
-                    buttons = []
-
                     self.progressbar = QtWidgets.QProgressBar(self, textVisible=False)
                     self.progressbar.setFixedWidth(260)
                     self.progressbar.move(20, 430)
 
+                    self.profiles_container = QtWidgets.QWidget()
+                    self.profiles_layout = QtWidgets.QVBoxLayout(
+                        self.profiles_container
+                    )
+
+                    self.scroll_area = QtWidgets.QScrollArea(self)
+                    self.scroll_area.setFixedSize(300, 200)
+                    self.scroll_area.setWidget(self.profiles_container)
+                    self.scroll_area.setWidgetResizable(True)
+
                     for profile in profiles:
-                        download_button = QtWidgets.QPushButton(self)
+                        download_button = ClickableLabel(self)
                         download_button.setText(profile)
-                        download_button.setFixedWidth(240)
-                        download_button.move(30, start_y_coord)
-                        buttons.append(download_button)
-                        start_y_coord += 30
+                        download_button.setAlignment(Qt.AlignmentFlag.AlignCenter)
                         download_button.clicked.connect(
                             lambda *args,
                             cur_profile=profile: self.download_project_process(
@@ -315,12 +326,9 @@ class ProjectsSearch(QtWidgets.QDialog):
                                 self.loader,
                             )
                         )
-                    download_button = QtWidgets.QPushButton(self)
+                        self.profiles_layout.addWidget(download_button)
+                    download_button = ClickableLabel(self)
                     download_button.setText("В корень (без сборки)")
-                    download_button.setFixedWidth(240)
-                    download_button.move(30, start_y_coord)
-                    buttons.append(download_button)
-                    start_y_coord += 30
                     download_button.clicked.connect(
                         lambda *args, cur_profile="": self.download_project_process(
                             self.loaders_and_files[self.loader],
@@ -330,6 +338,8 @@ class ProjectsSearch(QtWidgets.QDialog):
                             self.loader,
                         )
                     )
+                    download_button.setAlignment(Qt.AlignmentFlag.AlignCenter)
+                    self.profiles_layout.addWidget(download_button)
 
                     self.show()
 
@@ -351,7 +361,6 @@ class ProjectsSearch(QtWidgets.QDialog):
                 self.setWindowTitle(f"Загрузка {self.project['title']}")
                 self.setFixedSize(300, 500)
 
-                start_y_coord = 30
                 with requests.get(
                     f'https://api.modrinth.com/v2/project/{self.project["id"]}/version?game_versions=["{self.mc_version}"]',
                     timeout=10,
@@ -363,12 +372,19 @@ class ProjectsSearch(QtWidgets.QDialog):
                     for loader in project_version["loaders"]:
                         if loader not in self.loaders_and_files:
                             self.loaders_and_files[loader] = project_version["files"][0]
+
+                self.loaders_container = QtWidgets.QWidget()
+                self.loaders_layout = QtWidgets.QVBoxLayout(self.loaders_container)
+
+                self.scroll_area = QtWidgets.QScrollArea(self)
+                self.scroll_area.setFixedSize(300, 200)
+                self.scroll_area.setWidget(self.loaders_container)
+                self.scroll_area.setWidgetResizable(True)
+
                 for loader in self.loaders_and_files:
-                    download_button = QtWidgets.QPushButton(self)
+                    download_button = ClickableLabel(self)
+                    download_button.setAlignment(Qt.AlignmentFlag.AlignCenter)
                     download_button.setText(loader)
-                    download_button.setFixedWidth(240)
-                    download_button.move(30, start_y_coord)
-                    start_y_coord += 30
                     download_button.clicked.connect(
                         lambda *args, current_loader=loader: self.ProjectInstallWindow(
                             self,
@@ -379,6 +395,7 @@ class ProjectsSearch(QtWidgets.QDialog):
                             self.loaders_and_files,
                         )
                     )
+                    self.loaders_layout.addWidget(download_button)
 
                 self.show()
 
@@ -454,8 +471,8 @@ class ProjectsSearch(QtWidgets.QDialog):
 
             self.show()
 
-    def __init__(self, main_window: QtWidgets.QWidget, minecraft_directory: str):
-        super().__init__(main_window)
+    def __init__(self, parent: QtWidgets.QWidget, minecraft_directory: str):
+        super().__init__(parent)
         self.minecraft_directory = minecraft_directory
         self._make_ui()
 
@@ -508,7 +525,7 @@ class ProjectsSearch(QtWidgets.QDialog):
 
 
 class SettingsWindow(QtWidgets.QDialog):
-    def __init__(self, main_window: QtWidgets.QWidget):
+    def __init__(self):
         super().__init__(main_window)
         self._make_ui()
 
@@ -529,7 +546,15 @@ class SettingsWindow(QtWidgets.QDialog):
         main_window.show_old_betas = self.old_betas_checkbox.isChecked()
         main_window.show_snapshots = self.snapshots_checkbox.isChecked()
         main_window.show_releases = self.releases_checkbox.isChecked()
+        main_window.show_other_versions = self.other_versions_checkbox.isChecked()
+        main_window.show_profiles_and_packs = (
+            self.profiles_and_packs_checkbox.isChecked()
+        )
         return super().closeEvent(event)
+
+    def reject(self):
+        self.close()
+        return super().reject()
 
     def _make_ui(self):
         self.setWindowTitle("Настройки")
@@ -563,16 +588,6 @@ class SettingsWindow(QtWidgets.QDialog):
         self.old_alphas_checkbox = QtWidgets.QCheckBox(self)
         self.old_alphas_checkbox.setChecked(bool(main_window.show_old_alphas))
         self.old_alphas_checkbox.setText("Старые альфы")
-        self.old_alphas_checkbox.stateChanged.connect(
-            lambda: main_window.show_versions(
-                main_window,
-                self.old_alphas_checkbox.isChecked(),
-                self.old_betas_checkbox.isChecked(),
-                self.snapshots_checkbox.isChecked(),
-                self.releases_checkbox.isChecked(),
-                main_window.versions_combobox.currentText(),
-            )
-        )
         self.checkbox_width = self.old_alphas_checkbox.sizeHint().width()
         self.old_alphas_checkbox.move(
             (self.main_window_width - self.checkbox_width) // 2, 145
@@ -581,16 +596,6 @@ class SettingsWindow(QtWidgets.QDialog):
         self.old_betas_checkbox = QtWidgets.QCheckBox(self)
         self.old_betas_checkbox.setChecked(bool(main_window.show_old_betas))
         self.old_betas_checkbox.setText("Старые беты")
-        self.old_betas_checkbox.stateChanged.connect(
-            lambda: main_window.show_versions(
-                main_window,
-                self.old_alphas_checkbox.isChecked(),
-                self.old_betas_checkbox.isChecked(),
-                self.snapshots_checkbox.isChecked(),
-                self.releases_checkbox.isChecked(),
-                main_window.versions_combobox.currentText(),
-            )
-        )
         self.checkbox_width = self.old_betas_checkbox.sizeHint().width()
         self.old_betas_checkbox.move(
             (self.main_window_width - self.checkbox_width) // 2, 165
@@ -599,16 +604,6 @@ class SettingsWindow(QtWidgets.QDialog):
         self.snapshots_checkbox = QtWidgets.QCheckBox(self)
         self.snapshots_checkbox.setChecked(bool(main_window.show_snapshots))
         self.snapshots_checkbox.setText("Снапшоты")
-        self.snapshots_checkbox.stateChanged.connect(
-            lambda: main_window.show_versions(
-                main_window,
-                self.old_alphas_checkbox.isChecked(),
-                self.old_betas_checkbox.isChecked(),
-                self.snapshots_checkbox.isChecked(),
-                self.releases_checkbox.isChecked(),
-                main_window.versions_combobox.currentText(),
-            )
-        )
         self.checkbox_width = self.snapshots_checkbox.sizeHint().width()
         self.snapshots_checkbox.move(
             (self.main_window_width - self.checkbox_width) // 2, 185
@@ -617,23 +612,52 @@ class SettingsWindow(QtWidgets.QDialog):
         self.releases_checkbox = QtWidgets.QCheckBox(self)
         self.releases_checkbox.setChecked(bool(main_window.show_releases))
         self.releases_checkbox.setText("Релизы")
-        self.releases_checkbox.stateChanged.connect(
-            lambda: main_window.show_versions(
-                main_window,
-                self.old_alphas_checkbox.isChecked(),
-                self.old_betas_checkbox.isChecked(),
-                self.snapshots_checkbox.isChecked(),
-                self.releases_checkbox.isChecked(),
-                main_window.versions_combobox.currentText(),
-            )
-        )
         self.checkbox_width = self.releases_checkbox.sizeHint().width()
         self.releases_checkbox.move(
             (self.main_window_width - self.checkbox_width) // 2, 205
         )
 
+        self.other_versions_checkbox = QtWidgets.QCheckBox(self)
+        self.other_versions_checkbox.setChecked(bool(main_window.show_other_versions))
+        self.other_versions_checkbox.setText("Прочие версии")
+        self.checkbox_width = self.other_versions_checkbox.sizeHint().width()
+        self.other_versions_checkbox.move(
+            (self.main_window_width - self.checkbox_width) // 2, 225
+        )
+
+        self.profiles_and_packs_checkbox = QtWidgets.QCheckBox(self)
+        self.profiles_and_packs_checkbox.setChecked(
+            bool(main_window.show_profiles_and_packs)
+        )
+        self.profiles_and_packs_checkbox.setText("Профили и сборки")
+        self.checkbox_width = self.profiles_and_packs_checkbox.sizeHint().width()
+        self.profiles_and_packs_checkbox.move(
+            (self.main_window_width - self.checkbox_width) // 2, 245
+        )
+
+        for widget in (
+            self.old_alphas_checkbox,
+            self.old_betas_checkbox,
+            self.snapshots_checkbox,
+            self.releases_checkbox,
+            self.other_versions_checkbox,
+            self.profiles_and_packs_checkbox,
+        ):
+            widget.stateChanged.connect(
+                lambda: main_window.show_versions(
+                    main_window,
+                    self.old_alphas_checkbox.isChecked(),
+                    self.old_betas_checkbox.isChecked(),
+                    self.snapshots_checkbox.isChecked(),
+                    self.releases_checkbox.isChecked(),
+                    self.other_versions_checkbox.isChecked(),
+                    self.profiles_and_packs_checkbox.isChecked(),
+                    main_window.versions_combobox.currentText(),
+                )
+            )
+
         self.minecraft_directory_button = QtWidgets.QPushButton(self)
-        self.minecraft_directory_button.move(25, 280)
+        self.minecraft_directory_button.move(25, 285)
         self.minecraft_directory_button.setFixedWidth(250)
         self.minecraft_directory_button.clicked.connect(
             lambda: self.set_game_directory(
@@ -642,10 +666,10 @@ class SettingsWindow(QtWidgets.QDialog):
                 )
             )
         )
-        self.minecraft_directory_button.setText("Выбор папки для файов игры")
+        self.minecraft_directory_button.setText("Выбор папки для файлов игры")
 
         self.current_minecraft_directory = QtWidgets.QLabel(self)
-        self.current_minecraft_directory.move(25, 310)
+        self.current_minecraft_directory.move(25, 315)
         self.current_minecraft_directory.setFixedWidth(250)
         self.current_minecraft_directory.setText(
             f"Текущая папка с игрой:\n{main_window.minecraft_directory}"
@@ -655,7 +679,7 @@ class SettingsWindow(QtWidgets.QDialog):
 
         self.launcher_version_label = QtWidgets.QLabel(self)
         self.launcher_version_label.setText(
-            f"Версия лаунчера: {utils.LAUNCHER_VERSION}"
+            f"Версия лаунчера: {utils.Constants.LAUNCHER_VERSION}"
         )
         self.launcher_version_label.move(25, 450)
         self.launcher_version_label.setFixedWidth(250)
@@ -665,12 +689,8 @@ class SettingsWindow(QtWidgets.QDialog):
 
 
 class AccountWindow(QtWidgets.QDialog):
-    def __init__(self, main_window: QtWidgets.QWidget):
-        super().__init__(main_window)
-        self._make_ui()
-
     class SkinChanger(QtWidgets.QDialog):
-        def __init__(self, parent: QtWidgets.QWidget):
+        def __init__(self, parent: QtWidgets.QWidget):  # TODO
             super().__init__(parent)
             self._make_ui()
 
@@ -689,125 +709,168 @@ class AccountWindow(QtWidgets.QDialog):
 
             self.show()
 
+    class LoginWindow(QtWidgets.QDialog):
+        def __init__(
+            self,
+            parent: QtWidgets.QWidget,
+            sign_status_label: QtWidgets.QLabel,
+            account_type: str,
+        ):
+            super().__init__(parent)
+            self.sign_status_label = sign_status_label
+            self._make_ui(account_type)
+
+        def _handle_url_change(self, url: QUrl, account_type: str):
+            successfull_login = False
+            url: str = url.toString()
+            if minecraft_launcher_lib.microsoft_account.url_contains_auth_code(url):
+                auth_code = (
+                    minecraft_launcher_lib.microsoft_account.parse_auth_code_url(
+                        url, None
+                    )
+                )
+                if account_type == "Microsoft":
+                    try:
+                        login_info = (
+                            minecraft_launcher_lib.microsoft_account.complete_login(
+                                utils.Constants.MICROSOFT_CLIENT_ID,
+                                None,
+                                utils.Constants.REDIRECT_URI,
+                                auth_code,
+                            )
+                        )
+                        launch_account_type = "Microsoft"
+                        access_token = login_info["access_token"]
+                        game_uuid = login_info["id"]
+                        nickname = login_info["name"]
+                        refresh_token = login_info["refresh_token"]
+                        successfull_login = True
+                    except KeyError:
+                        self.close()
+                        QtWidgets.QMessageBox.critical(
+                            self,
+                            "Ошибка входа",
+                            "Вероятнее всего, вы не владеете игрой. Использование этого аккаунта невозможно",
+                        )
+                elif account_type == "Ely.by":
+                    with requests.get(
+                        f"{utils.Constants.ELY_PROXY_URL}/code",
+                        params={"code": auth_code},
+                        timeout=20,
+                        headers={"User-Agent": utils.Constants.USER_AGENT},
+                    ) as r:
+                        r.raise_for_status()
+                        login_info = r.json()
+                    launch_account_type = "Ely.by"
+                    access_token = login_info["access_token"]
+                    refresh_token = login_info["refresh_token"]
+                    with requests.get(
+                        "https://account.ely.by/api/account/v1/info",
+                        headers={"Authorization": f"Bearer {access_token}"},
+                        timeout=10,
+                    ) as r:
+                        r.raise_for_status()
+                        full_login_info = r.json()
+                    game_uuid = full_login_info["uuid"]
+                    nickname = full_login_info["username"]
+                    successfull_login = True
+                if successfull_login:
+                    main_window.launch_account_type = launch_account_type
+                    main_window.access_token = access_token
+                    main_window.game_uuid = game_uuid
+                    main_window.refresh_token = refresh_token
+                    self.close()
+                    main_window.nickname_entry.setText(nickname)
+                    main_window.nickname_entry.setReadOnly(True)
+                    QtWidgets.QMessageBox.information(
+                        self, "Успешно!", "Вы успешно вошли в аккаунт"
+                    )
+                    main_window.auth_info = True, account_type
+                    self.sign_status_label.setText(
+                        utils.boolean_to_sign_status(main_window.auth_info)
+                    )
+
+        def _make_ui(self, account_type: str):
+            self.resize(1280, 720)
+
+            self.view = QtWebEngineWidgets.QWebEngineView()
+            self.view.urlChanged.connect(
+                lambda url: self._handle_url_change(url, account_type)
+            )
+            if account_type == "Microsoft":
+                self.view.setUrl(
+                    minecraft_launcher_lib.microsoft_account.get_login_url(
+                        utils.Constants.MICROSOFT_CLIENT_ID,
+                        utils.Constants.REDIRECT_URI,
+                    )
+                )
+            elif account_type == "Ely.by":
+                self.view.setUrl(
+                    f"https://account.ely.by/oauth2/v1?client_id={utils.Constants.ELY_CLIENT_ID}&redirect_uri={utils.Constants.REDIRECT_URI}&response_type=code&scope=account_info offline_access minecraft_server_session"
+                )
+
+            self.view_layout = QtWidgets.QVBoxLayout(self)
+
+            self.view_layout.addWidget(self.view)
+            self.setWindowTitle("Вход в аккаунт")
+
+            self.show()
+
+    def __init__(self):
+        super().__init__(main_window)
+        self._make_ui()
+
+    def set_account_type(self, account_type: str):
+        self.account_type = account_type
+
+    def logout(self):
+        main_window.game_uuid = ""
+        main_window.access_token = ""
+        main_window.nickname_entry.setReadOnly(False)
+        main_window.refresh_token = ""
+        main_window.auth_info = False, None
+        self.sign_status_label.setText(
+            utils.boolean_to_sign_status(main_window.auth_info)
+        )
+
     def _make_ui(self):
-        def login():
-            data = requests.post(
-                "https://authserver.ely.by/auth/authenticate",
-                json={
-                    "username": self.ely_username_entry.text(),
-                    "password": self.ely_password_entry.text(),
-                    "clientToken": main_window.client_token,
-                    "requestUser": True,
-                },
-                timeout=10,
-            )
-            if main_window.is_authorized:
-                QtWidgets.QMessageBox.critical(
-                    self, "Ошибка входа", "Сначала выйдите из аккаунта"
-                )
-                logging.error(
-                    "Error message showed in login: login error, sign out before login"
-                )
-            elif data.status_code == 200:
-                main_window.access_token = data.json()["accessToken"]
-                main_window.ely_uuid = data.json()["user"]["id"]
-                QtWidgets.QMessageBox.information(
-                    self,
-                    "Поздравляем!",
-                    "Теперь вы будете автоматически авторизованы на серверах, которые используют систему авторизации ely.by.",
-                )
-                logging.info(
-                    "Info message showed in login: ely skin will be shown in game"
-                )
-                main_window.is_authorized = True
-                self.sign_status_label.setText(
-                    utils.boolean_to_sign_status(main_window.is_authorized)
-                )
-                main_window.nickname_entry.setText(data.json()["user"]["username"])
-                main_window.nickname_entry.setReadOnly(True)
-            else:
-                QtWidgets.QMessageBox.critical(
-                    self,
-                    "Ошибка входа",
-                    f"Текст ошибки: {data.json()['errorMessage']}",
-                )
-                logging.error(
-                    f"Error message showed in login: login error, {data.json()['errorMessage']}"
-                )
-
-        def signout():
-            data = requests.post(
-                "https://authserver.ely.by/auth/invalidate",
-                json={
-                    "accessToken": main_window.access_token,
-                    "clientToken": main_window.client_token,
-                },
-                timeout=10,
-            )
-            main_window.access_token = ""
-            main_window.ely_uuid = ""
-            if data.status_code == 200:
-                QtWidgets.QMessageBox.information(
-                    self, "Выход из аккаунта", "Вы вышли из аккаунта"
-                )
-                logging.info("Info message showed in signout: successfully signed out")
-                main_window.nickname_entry.setReadOnly(False)
-                main_window.is_authorized = False
-                self.sign_status_label.setText(
-                    utils.boolean_to_sign_status(main_window.is_authorized)
-                )
-            else:
-                QtWidgets.QMessageBox.critical(
-                    self, "Ошибка выхода", data.json()["errorMessage"]
-                )
-                logging.error(
-                    f"Error message showed in signout: sign out error, {data.json()['errorMessage']}"
-                )
-
         self.setWindowTitle("Аккаунт")
         self.setFixedSize(300, 500)
         self.setModal(True)
 
-        self.ely_username_entry = QtWidgets.QLineEdit(self)
-        self.ely_username_entry.setPlaceholderText("Никнейм аккаунта ely.by")
-        self.main_window_width = self.width()
-        self.entry_width = self.ely_username_entry.sizeHint().width()
-        self.ely_username_entry.move(
-            (self.main_window_width - self.entry_width) // 2, 40
-        )
-
-        self.ely_password_entry = QtWidgets.QLineEdit(self)
-        self.ely_password_entry.setPlaceholderText("Пароль аккаунта ely.by")
-        self.ely_password_entry.setEchoMode(QtWidgets.QLineEdit.EchoMode.Password)
-        self.entry_width = self.ely_password_entry.sizeHint().width()
-        self.ely_password_entry.move(
-            (self.main_window_width - self.entry_width) // 2, 70
-        )
+        self.account_type_combobox = QtWidgets.QComboBox(self)
+        self.account_type_combobox.addItems(["Microsoft", "Ely.by"])
+        self.set_account_type(self.account_type_combobox.currentText())
+        self.account_type_combobox.currentTextChanged.connect(self.set_account_type)
+        self.account_type_combobox.setFixedWidth(200)
+        self.account_type_combobox.move(50, 10)
 
         self.login_button = QtWidgets.QPushButton(self)
         self.login_button.setText("Войти в аккаунт")
-        self.login_button.clicked.connect(login)
-        self.button_width = self.login_button.sizeHint().width()
-        self.login_button.move((self.main_window_width - self.button_width) // 2, 120)
-
-        self.signout_button = QtWidgets.QPushButton(self)
-        self.signout_button.setText("Выйти из аккаунта")
-        self.signout_button.clicked.connect(signout)
-        self.button_width = self.signout_button.sizeHint().width()
-        self.signout_button.move((self.main_window_width - self.button_width) // 2, 150)
-
-        self.sign_status_label = QtWidgets.QLabel(
-            self, text=utils.boolean_to_sign_status(main_window.is_authorized)
+        self.login_button.clicked.connect(
+            lambda: self.LoginWindow(self, self.sign_status_label, self.account_type)
         )
-        self.sign_status_label.setFixedWidth(200)
-        self.sign_status_label.move(50, 180)
-        self.sign_status_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self.login_button.setFixedWidth(200)
+        self.login_button.move(50, 40)
+
+        self.logout_button = QtWidgets.QPushButton(self)
+        self.logout_button.setText("Выйти из аккаунта")
+        self.logout_button.clicked.connect(self.logout)
+        self.logout_button.setFixedWidth(200)
+        self.logout_button.move(50, 70)
 
         self.change_skin_button = QtWidgets.QPushButton(self)
         self.change_skin_button.setText("Изменить скин")
         self.change_skin_button.setFixedWidth(120)
-        self.change_skin_button.move(90, 240)
+        self.change_skin_button.move(90, 100)
         self.change_skin_button.clicked.connect(lambda: self.SkinChanger(self))
+
+        self.sign_status_label = QtWidgets.QLabel(
+            self, text=utils.boolean_to_sign_status(main_window.auth_info)
+        )
+        self.sign_status_label.setFixedWidth(200)
+        self.sign_status_label.move(50, 130)
+        self.sign_status_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
 
         self.show()
 
@@ -858,6 +921,8 @@ class ProfilesWindow(QtWidgets.QDialog):
                         main_window.show_old_betas,
                         main_window.show_snapshots,
                         main_window.show_releases,
+                        main_window.show_other_versions,
+                        main_window.show_profiles_and_packs,
                         main_window.versions_combobox.currentText(),
                     )
                     QtWidgets.QMessageBox.information(
@@ -865,6 +930,7 @@ class ProfilesWindow(QtWidgets.QDialog):
                         "Создание профиля",
                         f"Папка профиль успешно создана по пути {profile_path}",
                     )
+                    logging.info(f"New profile created, path: {profile_path}")
                 elif not version_installed:
                     QtWidgets.QMessageBox.critical(
                         self,
@@ -934,6 +1000,10 @@ class ProfilesWindow(QtWidgets.QDialog):
             self.import_mrpack_process.terminate()
         return super().closeEvent(event)
 
+    def reject(self):
+        self.close()
+        return super().reject()
+
     def _update_ui_from_queue(self):
         while not self.queue.empty():
             var, value, *other_info = self.queue.get_nowait()
@@ -946,6 +1016,8 @@ class ProfilesWindow(QtWidgets.QDialog):
                     main_window.show_old_betas,
                     main_window.show_snapshots,
                     main_window.show_releases,
+                    main_window.show_other_versions,
+                    main_window.show_profiles_and_packs,
                     main_window.versions_combobox.currentText(),
                 )
             elif var == "log_exception":
@@ -1053,7 +1125,11 @@ class MainWindow(QtWidgets.QMainWindow):
             elif var == "status":
                 self.download_info_label.setText(value)
             elif var == "start_button":
-                self.start_button.setEnabled(value)
+                if value:
+                    self._after_stop_download_process()
+                else:
+                    self.start_button_type = "Stop"
+                    self.start_button.setText("Отмена")
             elif var == "start_rich_presence":
                 if value == "minecraft_opened":
                     utils.start_rich_presence(self.rpc, *other_info)
@@ -1061,6 +1137,7 @@ class MainWindow(QtWidgets.QMainWindow):
                     utils.start_rich_presence(self.rpc)
             elif var == "log_exception":
                 log_exception(*other_info)
+                self._after_stop_download_process()
             elif var == "show_message":
                 if value == "critical":
                     QtWidgets.QMessageBox.critical(self, other_info[0], other_info[1])
@@ -1091,12 +1168,16 @@ class MainWindow(QtWidgets.QMainWindow):
         chosen_java_arguments: str,
         optifine_position: str,
         saved_access_token: str,
-        saved_ely_uuid: str,
+        saved_game_uuid: str,
+        saved_refresh_token: str,
+        launch_account_type: str,
         show_console_position: str,
         show_old_alphas_position: str,
         show_old_betas_position: str,
         show_snapshots_position: str,
         show_releases_position: str,
+        show_other_versions_position: str,
+        show_profiles_and_packs_position: str,
         saved_minecraft_directory: str,
         allow_experiments: str,
         hover_color: str,
@@ -1107,28 +1188,23 @@ class MainWindow(QtWidgets.QMainWindow):
         self.chosen_java_arguments = chosen_java_arguments
         self.optifine_position = optifine_position
         self.saved_access_token = saved_access_token
-        self.saved_ely_uuid = saved_ely_uuid
+        self.saved_game_uuid = saved_game_uuid
+        self.saved_refresh_token = saved_refresh_token
+        self.launch_account_type = launch_account_type
         self.show_console_position = show_console_position
         self.show_old_alphas_position = show_old_alphas_position
         self.show_old_betas_position = show_old_betas_position
         self.show_snapshots_position = show_snapshots_position
         self.show_releases_position = show_releases_position
+        self.show_other_versions_position = show_other_versions_position
+        self.show_profiles_and_packs_position = show_profiles_and_packs_position
         self.saved_minecraft_directory = saved_minecraft_directory
         self.allow_experiments = allow_experiments
         self.hover_color = hover_color
 
-        sys.excepthook = (
-            lambda exception_type, exception, exception_traceback: log_exception(
-                "".join(
-                    traceback.format_exception(
-                        exception_type, exception, exception_traceback
-                    )
-                )
-            )
-        )
-
         super().__init__()
         if self.check_java():
+            logging.debug(f"Java path: {self.java_path}")
             self.save_config_on_close = True
             self._make_ui()
         else:
@@ -1147,11 +1223,13 @@ class MainWindow(QtWidgets.QMainWindow):
 
     def show_versions(
         self,
-        main_window,  # TODO
+        main_window: QtWidgets.QWidget,
         show_old_alphas: Union[bool, int],
         show_old_betas: Union[bool, int],
         show_snapshots: Union[bool, int],
         show_releases: Union[bool, int],
+        other_versions: Union[bool, int],
+        profiles_and_packs: Union[bool, int],
         current_version: str,
     ):
         versions_names_list = []
@@ -1165,25 +1243,29 @@ class MainWindow(QtWidgets.QMainWindow):
                     versions_names_list.append(version["id"])
                 elif version["type"] == "release" and show_releases:
                     versions_names_list.append(version["id"])
-            for item in minecraft_launcher_lib.utils.get_installed_versions(
-                main_window.minecraft_directory
-            ):
-                if all(
-                    loader not in item["id"].lower() for loader in self.mod_loaders
-                ) and not minecraft_launcher_lib.utils.is_vanilla_version(item["id"]):
-                    versions_names_list.append(item["id"])
-            for item in os.listdir(
-                os.path.join(main_window.minecraft_directory, "profiles")
-            ):
-                if os.path.isfile(
-                    os.path.join(
-                        main_window.minecraft_directory,
-                        "profiles",
-                        item,
-                        "profile_info.json",
-                    )
+            if other_versions:
+                for item in minecraft_launcher_lib.utils.get_installed_versions(
+                    main_window.minecraft_directory
                 ):
-                    versions_names_list.append(item)
+                    if all(
+                        loader not in item["id"].lower() for loader in self.mod_loaders
+                    ) and not minecraft_launcher_lib.utils.is_vanilla_version(
+                        item["id"]
+                    ):
+                        versions_names_list.append(item["id"])
+            if profiles_and_packs:
+                for item in os.listdir(
+                    os.path.join(main_window.minecraft_directory, "profiles")
+                ):
+                    if os.path.isfile(
+                        os.path.join(
+                            main_window.minecraft_directory,
+                            "profiles",
+                            item,
+                            "profile_info.json",
+                        )
+                    ):
+                        versions_names_list.append(item)
             main_window.versions_combobox.clear()
             main_window.versions_combobox.addItems(versions_names_list)
             main_window.versions_combobox.setCurrentText(current_version)
@@ -1198,12 +1280,16 @@ class MainWindow(QtWidgets.QMainWindow):
             "java_arguments": self.java_arguments,
             "optifine": int(self.optifine),
             "access_token": self.access_token,
-            "ely_uuid": self.ely_uuid,
+            "game_uuid": self.game_uuid,
+            "refresh_token": self.refresh_token,
+            "launch_account_type": self.launch_account_type,
             "show_console": int(self.show_console),
             "show_old_alphas": int(self.show_old_alphas),
             "show_old_betas": int(self.show_old_betas),
             "show_snapshots": int(self.show_snapshots),
             "show_releases": int(self.show_releases),
+            "show_other_versions": int(self.show_other_versions),
+            "show_profiles_and_packs": int(self.show_profiles_and_packs),
             "minecraft_directory": self.minecraft_directory,
             "allow_experiments": int(self.allow_experiments),
             "hover_color": self.hover_color,
@@ -1246,84 +1332,114 @@ class MainWindow(QtWidgets.QMainWindow):
         else:
             self.optifine_checkbox.setDisabled(True)
 
+    def _after_stop_download_process(self):
+        self.start_button_type = "Start"
+        self.start_button.setText("Запуск")
+        self.progressbar.setValue(0)
+        self.download_info_label.setText("")
+
     def on_start_button(self):
         if __name__ == "__main__":
-            self.optifine = self.optifine_checkbox.isChecked()
-            self.mod_loader = self.loaders_combobox.currentText()
-            self.raw_version = self.versions_combobox.currentText()
-            self.nickname = self.nickname_entry.text()
+            if self.start_button_type == "Start":
+                self.optifine = self.optifine_checkbox.isChecked()
+                self.mod_loader = self.loaders_combobox.currentText()
+                self.raw_version = self.versions_combobox.currentText()
+                self.nickname = self.nickname_entry.text()
 
-            self.start_button.setEnabled(False)
-
-            self.queue = multiprocessing.Queue()
-            self.minecraft_download_process = multiprocessing.Process(
-                target=utils.run_in_process_with_exceptions_logging,
-                args=(
-                    utils.launch,
-                    self.minecraft_directory,
-                    self.mod_loader,
-                    self.raw_version,
-                    self.optifine and self.optifine_checkbox.isEnabled(),
-                    self.show_console,
-                    self.nickname,
-                    self.ely_uuid,
-                    self.access_token,
-                    self.java_arguments,
-                    self.no_internet_connection,
-                ),
-                kwargs={"queue": self.queue, "is_game_launch_process": True},
-                daemon=True,
-            )
-            self.minecraft_download_process.start()
-            self.timer = QTimer()
-            self.timer.timeout.connect(self._update_ui_from_queue)
-            self.timer.start(200)
+                self.queue = multiprocessing.Queue()
+                self.minecraft_download_process = multiprocessing.Process(
+                    target=utils.run_in_process_with_exceptions_logging,
+                    args=(
+                        utils.launch,
+                        self.minecraft_directory,
+                        self.mod_loader,
+                        self.raw_version,
+                        self.optifine and self.optifine_checkbox.isEnabled(),
+                        self.show_console,
+                        self.nickname,
+                        self.game_uuid,
+                        self.access_token,
+                        self.java_arguments,
+                        self.launch_account_type,
+                        self.no_internet_connection,
+                    ),
+                    kwargs={"queue": self.queue, "is_game_launch_process": True},
+                    daemon=True,
+                )
+                self.minecraft_download_process.start()
+                self.timer = QTimer()
+                self.timer.timeout.connect(self._update_ui_from_queue)
+                self.timer.start(200)
+                self.start_button_type = "Stop"
+                self.start_button.setText("Отмена")
+            else:
+                self.minecraft_download_process.terminate()
+                self._after_stop_download_process()
 
     def auto_login(self):
-        if not self.no_internet_connection:
-            if self.saved_ely_uuid and self.saved_access_token:
-                with requests.post(
-                    "https://authserver.ely.by/auth/validate",
-                    json={"accessToken": self.saved_access_token},
-                    timeout=10,
-                ) as r:
-                    valid_token_info = r
-                if valid_token_info.status_code != 200:
-                    with requests.post(
-                        "https://authserver.ely.by/auth/refresh",
-                        json={
-                            "accessToken": self.saved_access_token,
-                            "clientToken": self.client_token,
-                            "requestUser": True,
-                        },
+        if (
+            not self.no_internet_connection
+            and self.saved_game_uuid
+            and self.saved_access_token
+        ):
+            try:
+                if self.launch_account_type == "Microsoft":
+                    try:
+                        login_info = (
+                            minecraft_launcher_lib.microsoft_account.complete_refresh(
+                                utils.Constants.MICROSOFT_CLIENT_ID,
+                                None,
+                                utils.Constants.REDIRECT_URI,
+                                self.saved_refresh_token,
+                            )
+                        )
+                        self.auth_info = True, self.launch_account_type
+                        return (
+                            login_info["access_token"],
+                            login_info["id"],
+                            login_info["refresh_token"],
+                        )
+                    except KeyError:
+                        self.auth_info = False, None
+                        return "", "", ""
+                elif self.launch_account_type == "Ely.by":
+                    with requests.get(
+                        f"{utils.Constants.ELY_PROXY_URL}/refresh",
+                        params={"token": self.saved_refresh_token},
+                        timeout=20,
+                        headers={"User-Agent": utils.Constants.USER_AGENT},
+                    ) as r:
+                        r.raise_for_status()
+                        login_info = r.json()
+                    access_token = login_info["access_token"]
+                    with requests.get(
+                        "https://account.ely.by/api/account/v1/info",
+                        headers={"Authorization": f"Bearer {access_token}"},
                         timeout=10,
                     ) as r:
-                        refreshed_token_info = r
-                    if refreshed_token_info.status_code != 200:
-                        access_token = ""
-                        ely_uuid = ""
-                        self.is_authorized = False
-                        return access_token, ely_uuid
-                    else:
-                        access_token = refreshed_token_info.json()["accessToken"]
-                        ely_uuid = refreshed_token_info.json()["user"]["id"]
-                        username = refreshed_token_info.json()["user"]["username"]
-                        self.nickname_entry.setText(username)
-                        self.nickname_entry.setReadOnly(True)
-                        self.is_authorized = True
-                        return access_token, ely_uuid
-                else:
-                    username = self.chosen_nickname
-                    self.nickname_entry.setText(username)
-                    self.nickname_entry.setReadOnly(True)
-                    self.is_authorized = True
-                    return self.saved_access_token, self.saved_ely_uuid
-            else:
-                self.is_authorized = False
-                return self.saved_access_token, self.saved_ely_uuid
+                        r.raise_for_status()
+                        full_login_info = r.json()
+                    game_uuid = full_login_info["uuid"]
+                    try:
+                        self.auth_info = True, self.launch_account_type
+                        return (
+                            access_token,
+                            game_uuid,
+                            self.saved_refresh_token,
+                        )
+                    except KeyError:
+                        self.auth_info = False, None
+                        return "", "", ""
+            except requests.RequestException:
+                self.auth_info = False, None
+                return "", "", self.saved_refresh_token
         else:
-            self.is_authorized = False
-            return self.saved_access_token, self.saved_ely_uuid
+            self.auth_info = False, None
+            return (
+                self.saved_access_token,
+                self.saved_game_uuid,
+                self.saved_refresh_token,
+            )
 
     def _make_ui(self):
         # self.setStyleSheet(
@@ -1343,7 +1459,7 @@ class MainWindow(QtWidgets.QMainWindow):
         self.setWindowIcon(utils.window_icon)
         self.setFixedSize(300, 500)
 
-        self.is_authorized = None
+        self.is_authorized = None, None
 
         self.raw_version = self.chosen_version
         self.mod_loader = self.chosen_mod_loader
@@ -1357,9 +1473,13 @@ class MainWindow(QtWidgets.QMainWindow):
         self.show_old_betas = int(self.show_old_betas_position)
         self.show_snapshots = int(self.show_snapshots_position)
         self.show_releases = int(self.show_releases_position)
+        self.show_other_versions = int(self.show_other_versions_position)
+        self.show_profiles_and_packs = int(self.show_profiles_and_packs_position)
 
         self.allow_experiments = int(self.allow_experiments)
         self.hover_color = self.hover_color
+
+        self.start_button_type = "Start"
 
         self.mod_loaders = ["fabric", "forge", "quilt", "neoforge", "vanilla"]
 
@@ -1380,11 +1500,13 @@ class MainWindow(QtWidgets.QMainWindow):
             self.show_old_betas,
             self.show_snapshots,
             self.show_releases,
+            self.show_other_versions,
+            self.show_profiles_and_packs,
             self.chosen_version,
         )
         self.versions_combobox.setFixedHeight(30)
         self.versions_combobox.setEditable(True)
-        self.versions_combobox.currentIndexChanged.connect(self.block_optifine_checkbox)
+        self.versions_combobox.currentTextChanged.connect(self.block_optifine_checkbox)
 
         self.nickname_entry = QtWidgets.QLineEdit(self)
         self.nickname_entry.move(20, 60)
@@ -1403,7 +1525,7 @@ class MainWindow(QtWidgets.QMainWindow):
         self.loaders_combobox.move(160, 20)
         self.loaders_combobox.setFixedWidth(120)
         self.loaders_combobox.setCurrentText(self.mod_loader)
-        self.loaders_combobox.currentIndexChanged.connect(self.block_optifine_checkbox)
+        self.loaders_combobox.currentTextChanged.connect(self.block_optifine_checkbox)
         self.loaders_combobox.setFixedHeight(30)
         self.loaders_combobox.setEditable(True)
 
@@ -1440,17 +1562,19 @@ class MainWindow(QtWidgets.QMainWindow):
 
         self.settings_button = QtWidgets.QPushButton(self)
         self.settings_button.setText("Настройки")
-        self.settings_button.clicked.connect(lambda: SettingsWindow(self))
+        self.settings_button.clicked.connect(SettingsWindow)
         self.settings_button.move(5, 465)
         self.settings_button.setFixedWidth(80)
 
         self.account_button = QtWidgets.QPushButton(self)
         self.account_button.setText("Аккаунт")
-        self.account_button.clicked.connect(lambda: AccountWindow(self))
+        self.account_button.clicked.connect(AccountWindow)
         self.account_button.move(215, 465)
         self.account_button.setFixedWidth(80)
 
         self.show()
+
+        logging.debug("Checking Internet connection...")
 
         try:
             requests.get("https://google.com", timeout=10).raise_for_status()
@@ -1458,21 +1582,30 @@ class MainWindow(QtWidgets.QMainWindow):
         except requests.exceptions.ConnectionError:
             self.no_internet_connection = True
 
-        self.client_token = str(uuid.uuid5(uuid.NAMESPACE_DNS, str(uuid.getnode())))
-        self.rpc = Presence(utils.CLIENT_ID)
+        logging.debug(f"No Internet connection: {self.no_internet_connection}")
+        self.rpc = Presence(utils.Constants.DISCORD_CLIENT_ID)
+
         if not self.no_internet_connection:
             try:
                 self.rpc.connect()
-            except pypresence.exceptions.DiscordNotFound:
+                logging.debug("Rpc successfully connected")
+            except pypresence.exceptions.DiscordNotFound as e:
+                logging.debug(f"There was an error while connecting rpc: {e}")
                 pass
         utils.start_rich_presence(self.rpc)
 
-        self.access_token, self.ely_uuid = self.auto_login()
+        self.access_token, self.game_uuid, self.refresh_token = self.auto_login()
+        logging.debug(f"Chosen account type: {self.launch_account_type}")
+        logging.debug(f"Access token: {utils.hide_security_data(self.access_token)}")
+        logging.debug(f"Refresh token: {utils.hide_security_data(self.refresh_token)}")
+        logging.debug(f"Game uuid: {utils.hide_security_data(self.game_uuid)}")
+        if not self.game_uuid:
+            self.launch_account_type = "Ely.by"
 
         if (
             getattr(sys, "frozen", False)
             and not self.no_internet_connection
-            and updater.is_new_version_released(utils.LAUNCHER_VERSION)
+            and updater.is_new_version_released(utils.Constants.LAUNCHER_VERSION)
         ):
             if (
                 QtWidgets.QMessageBox.information(
@@ -1499,8 +1632,14 @@ class MainWindow(QtWidgets.QMainWindow):
 
 
 if __name__ == "__main__":
+    open("FVLauncher.log", "w").close()
+    logging.warning(
+        "=== DO NOT SHARE THIS FILE TO ANYBODY OR DELETE STRINGS, THAT CONTAINS YOUR TOKEN ==="
+    )
+    logging.debug("Program started its work")
     multiprocessing.freeze_support()
     config = load_config()
+    logging.debug("Config loaded")
     main_window = MainWindow(
         config["version"],
         config["mod_loader"],
@@ -1508,12 +1647,16 @@ if __name__ == "__main__":
         config["java_arguments"],
         config["optifine"],
         config["access_token"],
-        config["ely_uuid"],
+        config["game_uuid"],
+        config["refresh_token"],
+        config["launch_account_type"],
         config["show_console"],
         config["show_old_alphas"],
         config["show_old_betas"],
         config["show_snapshots"],
         config["show_releases"],
+        config["show_other_versions"],
+        config["show_profiles_and_packs"],
         config["minecraft_directory"],
         config["allow_experiments"],
         config["hover_color"],

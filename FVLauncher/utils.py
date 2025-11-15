@@ -15,9 +15,23 @@ from multiprocessing.queues import Queue
 from PySide6 import QtWidgets, QtGui
 from defusedxml import ElementTree as ET
 
+
+class Constants:
+    DISCORD_CLIENT_ID = "1399428342117175497"
+    START_LAUNCHER_TIME = int(time.time())
+
+    REDIRECT_URI = "http://localhost:3000"
+    MICROSOFT_CLIENT_ID = "63a59a89-2d0f-4bb9-a743-1e944c2cfd3e"
+
+    ELY_PROXY_URL = "https://small-shadow-d268.ferrumthevega.workers.dev"
+    ELY_CLIENT_ID = "fvlauncher"
+
+    LAUNCHER_VERSION = "v7.0"
+    USER_AGENT = "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:144.0) Gecko/20100101 Firefox/144.0"
+
+
 app = QtWidgets.QApplication(sys.argv)
 app.setStyle(QtWidgets.QStyleFactory.create("windows11"))
-
 window_icon = QtGui.QIcon(
     (
         os.path.join(
@@ -26,6 +40,10 @@ window_icon = QtGui.QIcon(
         )
     )
 )
+
+
+def hide_security_data(data: str):
+    return "[HIDDEN]" if data else "[NULL]"
 
 
 def run_in_process_with_exceptions_logging(
@@ -49,12 +67,13 @@ def run_in_process_with_exceptions_logging(
             queue.put(("start_button", True))
 
 
-def boolean_to_sign_status(is_authorized: Optional[bool]):
-    return {
+def boolean_to_sign_status(auth_info: Tuple[Optional[bool], Optional[str]]):
+    sign_text = {
         True: "Вы вошли в аккаунт",
         False: "Вы не вошли в аккаунт",
         None: "Ошибка проверки входа в аккаунт",
-    }[is_authorized]
+    }[auth_info[0]]
+    return f"{sign_text} (Аккаунт {auth_info[1]})" if auth_info[0] else sign_text
 
 
 def download_profile_from_mrpack(
@@ -64,13 +83,11 @@ def download_profile_from_mrpack(
     queue: Queue,
 ):
     if mrpack_path:
-        profile_name = minecraft_launcher_lib.mrpack.get_mrpack_information(
-            mrpack_path
-        )["name"]
+        mrpack_info = minecraft_launcher_lib.mrpack.get_mrpack_information(mrpack_path)
         profile_path = os.path.join(
             minecraft_directory,
             "profiles",
-            profile_name,
+            mrpack_info["name"],
         )
         minecraft_launcher_lib.mrpack.install_mrpack(
             mrpack_path,
@@ -109,7 +126,7 @@ def download_profile_from_mrpack(
                 "show_message",
                 "information",
                 "Сборка установлена",
-                f"Сборка {profile_name} была успешно установлена!",
+                f"Сборка {mrpack_info['name']} была успешно установлена!",
             )
         )
 
@@ -117,7 +134,7 @@ def download_profile_from_mrpack(
 def prepare_installation_parameters(
     mod_loader: str,
     nickname: str,
-    ely_uuid: str,
+    game_uuid: str,
     access_token: str,
     java_arguments: str,
 ):
@@ -129,102 +146,12 @@ def prepare_installation_parameters(
         install_type = minecraft_launcher_lib.install.install_minecraft_version
     options = {
         "username": nickname,
-        "uuid": ely_uuid if ely_uuid else str(uuid.uuid4().hex),
+        "uuid": game_uuid if game_uuid else str(uuid.uuid4().hex),
         "token": access_token,
         "jvmArguments": java_arguments.split(),
     }
     return install_type, options
 
-
-def download_injector(
-    raw_version: str,
-    minecraft_directory: str,
-    no_internet_connection: bool,
-    queue: Queue,
-):
-    if not no_internet_connection:
-        queue.put(("status", "Загрузка injector..."))
-        logging.debug("Installing injector in launch")
-        json_path = os.path.join(
-            minecraft_directory,
-            "versions",
-            raw_version,
-            f"{raw_version}.json",
-        )
-
-        authlib_version = None
-        with open(json_path, encoding="utf-8") as file_with_downloads:
-            for lib in json.load(file_with_downloads)["libraries"]:
-                if lib["name"].startswith("com.mojang:authlib:"):
-                    authlib_version = lib["name"].split(":")[-1]
-                    break
-        if authlib_version is not None:
-            base_url = "https://maven.ely.by/releases/by/ely/authlib"
-            with requests.get(f"{base_url}/maven-metadata.xml", timeout=10) as r:
-                r.raise_for_status()
-                maven_metadata = r.text
-            for maven_version in ET.fromstring(maven_metadata).findall(
-                "./versioning/versions/version"
-            )[::-1]:
-                if authlib_version in maven_version.text:
-                    with open(
-                        os.path.join(
-                            minecraft_directory,
-                            "libraries",
-                            "com",
-                            "mojang",
-                            "authlib",
-                            authlib_version,
-                            f"authlib-{authlib_version}.jar",
-                        ),
-                        "wb",
-                    ) as jar:
-                        with requests.get(
-                            f"{base_url}/{maven_version.text}/authlib-{maven_version.text}.jar",
-                            timeout=10,
-                        ) as r:
-                            r.raise_for_status()
-                            authlib_jar = r.content
-                        jar.write(authlib_jar)
-                        logging.debug(f"Installed patched authlib {maven_version.text}")
-                    break
-            else:
-                queue.put(
-                    (
-                        "show_message",
-                        "warning",
-                        "Ошибка authlib",
-                        "Для данной версии ещё не вышла патченая authlib, обычна она выходит в течении пяти дней после выхода версии.",
-                    )
-                )
-                logging.warning(
-                    f"Warning message showed in download_injector: skin error, there is not patched authlib for {raw_version} version"
-                )
-                return "InjectorNotDownloaded"
-        else:
-            queue.put(
-                (
-                    "show_message",
-                    "warning",
-                    "Ошибка authlib",
-                    "На данной версии нет authlib, скины и авторизация не поддерживаются.",
-                )
-            )
-            logging.warning(
-                f"Warning message showed in download_injector: skins not supported on {raw_version} version"
-            )
-    else:
-        queue.put(
-            (
-                "show_message",
-                "warning",
-                "Ошибка authlib",
-                "Отсутсвует подключение к интернету.",
-            )
-        )
-        logging.warning(
-            "Warning message showed in download_injector: skin error, no internet connection"
-        )
 
 
 def resolve_version_name(
@@ -441,6 +368,7 @@ def download_optifine(
                 with requests.get(url, timeout=10) as r:
                     r.raise_for_status()
                     optifine_jar.write(r.content)
+            logging.debug(f"Optifine installed, path: {optifine_path}")
         else:
             queue.put(
                 (
@@ -474,14 +402,15 @@ def launch(
     optifine: bool,
     show_console: bool,
     nickname: str,
-    ely_uuid: str,
+    game_uuid: str,
     access_token: str,
     java_arguments: str,
+    launch_account_type: str,
     no_internet_connection: bool,
     queue: Queue,
 ):
     install_type, options = prepare_installation_parameters(
-        mod_loader, nickname, ely_uuid, access_token, java_arguments
+        mod_loader, nickname, game_uuid, access_token, java_arguments
     )
 
     launch_info = install_version(
@@ -555,9 +484,7 @@ def launch(
             os.remove(optifine_path)
         if optifine:
             download_optifine(optifine_path, raw_version, queue, no_internet_connection)
-        download_injector(
-            raw_version, minecraft_directory, no_internet_connection, queue
-        )
+
         logging.debug(f"Launching {version} version")
         popen_kwargs = {}
         if not show_console:
@@ -569,8 +496,9 @@ def launch(
             cwd=minecraft_directory,
             **popen_kwargs,
         )
-        queue.put(("status", "Игра запущена"))
         queue.put(("start_button", True))
+        queue.put(("status", "Игра запущена"))
+        queue.put(("progressbar", 100))
         logging.debug(f"Minecraft process started on {version} version")
         queue.put(
             (
@@ -644,6 +572,7 @@ def only_project_install(
             f"Проект {project['title']} был успешно установлен.",
         )
     )
+    logging.info(f"Project {project['title']} installed")
 
 
 def start_rich_presence(
@@ -653,7 +582,7 @@ def start_rich_presence(
         if pid is None:
             rpc.update(
                 details="В меню",
-                start=start_launcher_time,
+                start=Constants.START_LAUNCHER_TIME,
                 large_image="minecraft_title",
                 large_text="FVLauncher",
                 buttons=[
@@ -668,7 +597,7 @@ def start_rich_presence(
                 pid=pid,
                 state=(f"Играет на версии {raw_version}"),
                 details="В Minecraft",
-                start=start_launcher_time,
+                start=Constants.START_LAUNCHER_TIME,
                 large_image="minecraft_title",
                 large_text="FVLauncher",
                 small_image="grass_block",
@@ -682,8 +611,3 @@ def start_rich_presence(
             )
     except AssertionError:
         pass
-
-
-CLIENT_ID = "1399428342117175497"
-start_launcher_time = int(time.time())
-LAUNCHER_VERSION = "v6.0.1"
