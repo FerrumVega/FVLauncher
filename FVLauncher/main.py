@@ -839,7 +839,7 @@ class AccountWindow(QtWidgets.QDialog):
         self.setModal(True)
 
         self.account_type_combobox = QtWidgets.QComboBox(self)
-        self.account_type_combobox.addItems(["Microsoft", "Ely.by"])
+        self.account_type_combobox.addItems(["Microsoft"])
         self.set_account_type(self.account_type_combobox.currentText())
         self.account_type_combobox.currentTextChanged.connect(self.set_account_type)
         self.account_type_combobox.setFixedWidth(200)
@@ -1599,8 +1599,6 @@ class MainWindow(QtWidgets.QMainWindow):
         logging.debug(f"Access token: {utils.hide_security_data(self.access_token)}")
         logging.debug(f"Refresh token: {utils.hide_security_data(self.refresh_token)}")
         logging.debug(f"Game uuid: {utils.hide_security_data(self.game_uuid)}")
-        if not self.game_uuid:
-            self.launch_account_type = "Ely.by"
 
         if (
             getattr(sys, "frozen", False)
