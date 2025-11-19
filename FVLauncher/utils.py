@@ -153,6 +153,118 @@ def prepare_installation_parameters(
     return install_type, options
 
 
+def download_alternate_auth(
+    raw_version: str,
+    minecraft_directory: str,
+    no_internet_connection: bool,
+    launch_account_type: str,
+    queue: Queue,
+):
+    if not no_internet_connection:
+        queue.put(("status", "Загрузка authlib..."))
+        logging.debug(
+            f"Installing authlib in launch, account type: {launch_account_type}"
+        )
+        json_path = os.path.join(
+            minecraft_directory,
+            "versions",
+            raw_version,
+            f"{raw_version}.json",
+        )
+
+        authlib_version = None
+        with open(json_path, encoding="utf-8") as file_with_downloads:
+            for lib in json.load(file_with_downloads)["libraries"]:
+                if lib["name"].startswith("com.mojang:authlib:"):
+                    authlib_version = lib["name"].split(":")[-1]
+                    lib_artifact = lib["downloads"]["artifact"]
+                    break
+        if authlib_version is not None:
+            if launch_account_type == "Ely.by":
+                base_url = "https://maven.ely.by/releases/by/ely/authlib"
+                with requests.get(f"{base_url}/maven-metadata.xml", timeout=10) as r:
+                    r.raise_for_status()
+                    maven_metadata = r.text
+                for maven_version in ET.fromstring(maven_metadata).findall(
+                    "./versioning/versions/version"
+                )[::-1]:
+                    if authlib_version in maven_version.text:
+                        with open(
+                            os.path.join(
+                                minecraft_directory,
+                                "libraries",
+                                lib_artifact["path"].replace("/", "\\"),
+                            ),
+                            "wb",
+                        ) as jar:
+                            with requests.get(
+                                f"{base_url}/{maven_version.text}/authlib-{maven_version.text}.jar",
+                                timeout=10,
+                            ) as r:
+                                r.raise_for_status()
+                                authlib_jar = r.content
+                            jar.write(authlib_jar)
+                            logging.debug(
+                                f"Installed patched authlib {maven_version.text}"
+                            )
+                        break
+                else:
+                    queue.put(
+                        (
+                            "show_message",
+                            "warning",
+                            "Ошибка authlib",
+                            "Для данной версии ещё не вышла патченая authlib, обычна она выходит в течении пяти дней после выхода версии.",
+                        )
+                    )
+                    logging.warning(
+                        f"Warning message showed in download_alternate_auth: skin error, there is not patched authlib for {raw_version} version"
+                    )
+                    return
+            elif launch_account_type == "Microsoft":
+                with open(
+                    os.path.join(
+                        minecraft_directory,
+                        "libraries",
+                        lib_artifact["path"].replace("/", "\\"),
+                    ),
+                    "wb",
+                ) as jar:
+                    with requests.get(
+                        lib_artifact["url"],
+                        timeout=10,
+                    ) as r:
+                        r.raise_for_status()
+                        authlib_jar = r.content
+                    jar.write(authlib_jar)
+                    logging.debug("Installed original authlib")
+
+        else:
+            queue.put(
+                (
+                    "show_message",
+                    "warning",
+                    "Ошибка authlib",
+                    "На данной версии нет authlib, скины и авторизация не поддерживаются.",
+                )
+            )
+            logging.warning(
+                f"Warning message showed in download_alternate_auth: skins not supported on {raw_version} version"
+            )
+    else:
+        queue.put(
+            (
+                "show_message",
+                "warning",
+                "Ошибка authlib",
+                "Отсутсвует подключение к интернету.",
+            )
+        )
+        logging.warning(
+            "Warning message showed in download_alternate_auth: skin error, no internet connection"
+        )
+
+
 def resolve_version_name(
     version: str,
     mod_loader: str,
@@ -483,6 +595,13 @@ def launch(
             os.remove(optifine_path)
         if optifine:
             download_optifine(optifine_path, raw_version, queue, no_internet_connection)
+        download_alternate_auth(
+            raw_version,
+            minecraft_directory,
+            no_internet_connection,
+            launch_account_type,
+            queue,
+        )
         logging.debug(f"Launching {version} version")
         popen_kwargs = {}
         if not show_console:

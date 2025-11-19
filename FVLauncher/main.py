@@ -745,7 +745,7 @@ class AccountWindow(QtWidgets.QDialog):
                         nickname = login_info["name"]
                         refresh_token = login_info["refresh_token"]
                         successfull_login = True
-                    except KeyError:
+                    except minecraft_launcher_lib.exceptions.AccountNotOwnMinecraft:
                         self.close()
                         QtWidgets.QMessageBox.critical(
                             self,
@@ -839,7 +839,7 @@ class AccountWindow(QtWidgets.QDialog):
         self.setModal(True)
 
         self.account_type_combobox = QtWidgets.QComboBox(self)
-        self.account_type_combobox.addItems(["Microsoft"])
+        self.account_type_combobox.addItems(["Microsoft", "Ely.by"])
         self.set_account_type(self.account_type_combobox.currentText())
         self.account_type_combobox.currentTextChanged.connect(self.set_account_type)
         self.account_type_combobox.setFixedWidth(200)
@@ -1009,7 +1009,7 @@ class ProfilesWindow(QtWidgets.QDialog):
             var, value, *other_info = self.queue.get_nowait()
             if var == "status":
                 self.mrpack_import_status.setText(value)
-            elif "show_versions":
+            elif var == "show_versions":
                 main_window.show_versions(
                     main_window,
                     main_window.show_old_alphas,
@@ -1599,6 +1599,8 @@ class MainWindow(QtWidgets.QMainWindow):
         logging.debug(f"Access token: {utils.hide_security_data(self.access_token)}")
         logging.debug(f"Refresh token: {utils.hide_security_data(self.refresh_token)}")
         logging.debug(f"Game uuid: {utils.hide_security_data(self.game_uuid)}")
+        if not self.game_uuid:
+            self.launch_account_type = "Ely.by"
 
         if (
             getattr(sys, "frozen", False)
