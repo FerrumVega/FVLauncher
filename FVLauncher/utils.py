@@ -153,7 +153,7 @@ def prepare_installation_parameters(
     return install_type, options
 
 
-def download_alternate_auth(
+def download_authlib(
     raw_version: str,
     minecraft_directory: str,
     no_internet_connection: bool,
@@ -218,7 +218,7 @@ def download_alternate_auth(
                         )
                     )
                     logging.warning(
-                        f"Warning message showed in download_alternate_auth: skin error, there is not patched authlib for {raw_version} version"
+                        f"Warning message showed in download_authlib: skin error, there is not patched authlib for {raw_version} version"
                     )
                     return
             elif launch_account_type == "Microsoft":
@@ -249,7 +249,7 @@ def download_alternate_auth(
                 )
             )
             logging.warning(
-                f"Warning message showed in download_alternate_auth: skins not supported on {raw_version} version"
+                f"Warning message showed in download_authlib: skins not supported on {raw_version} version"
             )
     else:
         queue.put(
@@ -261,7 +261,7 @@ def download_alternate_auth(
             )
         )
         logging.warning(
-            "Warning message showed in download_alternate_auth: skin error, no internet connection"
+            "Warning message showed in download_authlib: skin error, no internet connection"
         )
 
 
@@ -595,7 +595,7 @@ def launch(
             os.remove(optifine_path)
         if optifine:
             download_optifine(optifine_path, raw_version, queue, no_internet_connection)
-        download_alternate_auth(
+        download_authlib(
             raw_version,
             minecraft_directory,
             no_internet_connection,
