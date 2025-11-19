@@ -690,17 +690,24 @@ class SettingsWindow(QtWidgets.QDialog):
 
 class AccountWindow(QtWidgets.QDialog):
     class SkinChanger(QtWidgets.QDialog):
-        def __init__(self, parent: QtWidgets.QWidget):  # TODO
+        def __init__(self, parent: QtWidgets.QWidget, launch_account_type: str):
             super().__init__(parent)
+            self.launch_account_type = launch_account_type
             self._make_ui()
 
         def _make_ui(self):
             self.resize(1280, 720)
 
-            self.profile = QtWebEngineCore.QWebEngineProfile("FVLauncher")
             self.view = QtWebEngineWidgets.QWebEngineView()
-            self.view.setPage(QtWebEngineCore.QWebEnginePage(self.profile, self.view))
-            self.view.setUrl("https://ely.by")
+            self.view.setPage(
+                QtWebEngineCore.QWebEnginePage(browser_profile, self.view)
+            )
+            if self.launch_account_type == "Ely.by":
+                self.view.setUrl("https://ely.by/skins")
+            elif self.launch_account_type == "Microsoft":
+                self.view.setUrl(
+                    "https://www.minecraft.net/ru-ru/msaprofile/mygames/editskin"
+                )
 
             self.view_layout = QtWidgets.QVBoxLayout(self)
 
@@ -716,6 +723,11 @@ class AccountWindow(QtWidgets.QDialog):
             sign_status_label: QtWidgets.QLabel,
             account_type: str,
         ):
+            if main_window.auth_info[0]:
+                QtWidgets.QMessageBox.critical(
+                    parent, "Ошибка входа", "Сначала выйдите из аккаунта"
+                )
+                return
             super().__init__(parent)
             self.sign_status_label = sign_status_label
             self._make_ui(account_type)
@@ -794,6 +806,10 @@ class AccountWindow(QtWidgets.QDialog):
             self.resize(1280, 720)
 
             self.view = QtWebEngineWidgets.QWebEngineView()
+            self.view.setPage(
+                QtWebEngineCore.QWebEnginePage(browser_profile, self.view)
+            )
+
             self.view.urlChanged.connect(
                 lambda url: self._handle_url_change(url, account_type)
             )
@@ -832,6 +848,8 @@ class AccountWindow(QtWidgets.QDialog):
         self.sign_status_label.setText(
             utils.boolean_to_sign_status(main_window.auth_info)
         )
+        browser_profile.clearHttpCache()
+        browser_profile.cookieStore().deleteAllCookies()
 
     def _make_ui(self):
         self.setWindowTitle("Аккаунт")
@@ -863,13 +881,15 @@ class AccountWindow(QtWidgets.QDialog):
         self.change_skin_button.setText("Изменить скин")
         self.change_skin_button.setFixedWidth(120)
         self.change_skin_button.move(90, 100)
-        self.change_skin_button.clicked.connect(lambda: self.SkinChanger(self))
+        self.change_skin_button.clicked.connect(
+            lambda: self.SkinChanger(self, main_window.launch_account_type)
+        )
 
         self.sign_status_label = QtWidgets.QLabel(
             self, text=utils.boolean_to_sign_status(main_window.auth_info)
         )
-        self.sign_status_label.setFixedWidth(200)
-        self.sign_status_label.move(50, 130)
+        self.sign_status_label.setFixedWidth(280)
+        self.sign_status_label.move(10, 130)
         self.sign_status_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
 
         self.show()
@@ -1639,6 +1659,7 @@ if __name__ == "__main__":
     logging.debug("Program started its work")
     multiprocessing.freeze_support()
     config = load_config()
+    utils.Constants()
     logging.debug("Config loaded")
     main_window = MainWindow(
         config["version"],
@@ -1661,4 +1682,5 @@ if __name__ == "__main__":
         config["allow_experiments"],
         config["hover_color"],
     )
+    browser_profile = QtWebEngineCore.QWebEngineProfile("FVLauncher")
     sys.exit(utils.app.exec())
