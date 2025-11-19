@@ -37,7 +37,7 @@ NOT AN OFFICIAL MINECRAFT PRODUCT. NOT APPROVED BY OR ASSOCIATED WITH MOJANG OR 
 ![Загрузчики модов проекта](screenshots/ProjectLoadersChooseWindow.png)
 ![Выбор профиля для установки проекта](screenshots/ProjectInstallWindow.png)
 ![Настройки лаунчера](screenshots/SettingsWindow.png)
-![Аккаунт ely.by](screenshots/AccountWindow.png)
+![Аккаунт](screenshots/AccountWindow.png)
 ![Изменение скина](screenshots/SkinChanger.png)
 ![Создание/импорт профиля/сборки](screenshots/ProfilesWindow.png)
 ![Создание профиля](screenshots/CreateOwnProfile.png)
