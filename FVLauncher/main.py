@@ -249,24 +249,23 @@ class ProjectsSearch(QtWidgets.QDialog):
 
                     os.makedirs(os.path.dirname(project_file_path), exist_ok=True)
 
-                    if __name__ == "__main__":
-                        self.queue = multiprocessing.Queue()
-                        self.download_project_file_process = multiprocessing.Process(
-                            target=utils.run_in_process_with_exceptions_logging,
-                            args=(
-                                utils.only_project_install,
-                                project_file,
-                                project,
-                                project_file_path,
-                                profile_info_path,
-                            ),
-                            kwargs={"queue": self.queue},
-                            daemon=True,
-                        )
-                        self.download_project_file_process.start()
-                        self.timer = QTimer()
-                        self.timer.timeout.connect(self._update_ui_from_queue)
-                        self.timer.start(200)
+                    self.queue = multiprocessing.Queue()
+                    self.download_project_file_process = multiprocessing.Process(
+                        target=utils.run_in_process_with_exceptions_logging,
+                        args=(
+                            utils.only_project_install,
+                            project_file,
+                            project,
+                            project_file_path,
+                            profile_info_path,
+                        ),
+                        kwargs={"queue": self.queue},
+                        daemon=True,
+                    )
+                    self.download_project_file_process.start()
+                    self.timer = QTimer()
+                    self.timer.timeout.connect(self._update_ui_from_queue)
+                    self.timer.start(200)
 
                 def _make_ui(self):
                     profiles = []
@@ -824,7 +823,6 @@ class AccountWindow(QtWidgets.QDialog):
                 self.view.setUrl(
                     f"https://account.ely.by/oauth2/v1?client_id={utils.Constants.ELY_CLIENT_ID}&redirect_uri={utils.Constants.REDIRECT_URI}&response_type=code&scope=account_info offline_access minecraft_server_session"
                 )
-
             self.view_layout = QtWidgets.QVBoxLayout(self)
 
             self.view_layout.addWidget(self.view)
@@ -1052,12 +1050,12 @@ class ProfilesWindow(QtWidgets.QDialog):
                         self, other_info[0], other_info[1]
                     )
 
-    def _handle_open_mrpack_choosing_window(self):
+    def _handle_open_mrpack_choosing_window(self, mrpack_path):
         mrpack_path = QtWidgets.QFileDialog.getOpenFileName(
             self, "Выберите файл сборки", "", "*.mrpack"
         )[0].replace("/", "\\")
 
-        if __name__ == "__main__":
+        if mrpack_path:
             self.queue = multiprocessing.Queue()
             self.import_mrpack_process = multiprocessing.Process(
                 target=utils.run_in_process_with_exceptions_logging,
@@ -1098,6 +1096,8 @@ class ProfilesWindow(QtWidgets.QDialog):
         self.create_profile_button.move(90, 120)
         self.create_profile_button.setText("Создать профиль")
         self.create_profile_button.clicked.connect(lambda: self.CreateOwnProfile(self))
+
+        ProfilesWindow.Pac
 
         self.show()
 
@@ -1359,42 +1359,41 @@ class MainWindow(QtWidgets.QMainWindow):
         self.download_info_label.setText("")
 
     def on_start_button(self):
-        if __name__ == "__main__":
-            if self.start_button_type == "Start":
-                self.optifine = self.optifine_checkbox.isChecked()
-                self.mod_loader = self.loaders_combobox.currentText()
-                self.raw_version = self.versions_combobox.currentText()
-                self.nickname = self.nickname_entry.text()
+        if self.start_button_type == "Start":
+            self.optifine = self.optifine_checkbox.isChecked()
+            self.mod_loader = self.loaders_combobox.currentText()
+            self.raw_version = self.versions_combobox.currentText()
+            self.nickname = self.nickname_entry.text()
 
-                self.queue = multiprocessing.Queue()
-                self.minecraft_download_process = multiprocessing.Process(
-                    target=utils.run_in_process_with_exceptions_logging,
-                    args=(
-                        utils.launch,
-                        self.minecraft_directory,
-                        self.mod_loader,
-                        self.raw_version,
-                        self.optifine and self.optifine_checkbox.isEnabled(),
-                        self.show_console,
-                        self.nickname,
-                        self.game_uuid,
-                        self.access_token,
-                        self.java_arguments,
-                        self.launch_account_type,
-                        self.no_internet_connection,
-                    ),
-                    kwargs={"queue": self.queue, "is_game_launch_process": True},
-                    daemon=True,
-                )
-                self.minecraft_download_process.start()
-                self.timer = QTimer()
-                self.timer.timeout.connect(self._update_ui_from_queue)
-                self.timer.start(200)
-                self.start_button_type = "Stop"
-                self.start_button.setText("Отмена")
-            else:
-                self.minecraft_download_process.terminate()
-                self._after_stop_download_process()
+            self.queue = multiprocessing.Queue()
+            self.minecraft_download_process = multiprocessing.Process(
+                target=utils.run_in_process_with_exceptions_logging,
+                args=(
+                    utils.launch,
+                    self.minecraft_directory,
+                    self.mod_loader,
+                    self.raw_version,
+                    self.optifine and self.optifine_checkbox.isEnabled(),
+                    self.show_console,
+                    self.nickname,
+                    self.game_uuid,
+                    self.access_token,
+                    self.java_arguments,
+                    self.launch_account_type,
+                    self.no_internet_connection,
+                ),
+                kwargs={"queue": self.queue, "is_game_launch_process": True},
+                daemon=True,
+            )
+            self.minecraft_download_process.start()
+            self.timer = QTimer()
+            self.timer.timeout.connect(self._update_ui_from_queue)
+            self.timer.start(200)
+            self.start_button_type = "Stop"
+            self.start_button.setText("Отмена")
+        else:
+            self.minecraft_download_process.terminate()
+            self._after_stop_download_process()
 
     def auto_login(self):
         if (

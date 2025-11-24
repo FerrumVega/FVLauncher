@@ -7,9 +7,9 @@ export default {
             if (!code) return new Response("code not found", { status: 400 });
 
             const body = new URLSearchParams({
-                client_id: "fvlauncher",
+                client_id: "fvlauncherapp",
                 client_secret: env.ELY_CLIENT_SECRET,
-                redirect_uri: "http://localhost:5000",
+                redirect_uri: "http://localhost:3000",
                 grant_type: "authorization_code",
                 code: code
             });
@@ -31,7 +31,7 @@ export default {
             if (!token) return new Response("token not found", { status: 400 });
 
             const body = new URLSearchParams({
-                client_id: "fvlauncher",
+                client_id: "fvlauncherapp",
                 client_secret: env.ELY_CLIENT_SECRET,
                 scope: "account_info offline_access minecraft_server_session",
                 grant_type: "refresh_token",

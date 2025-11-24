@@ -23,11 +23,11 @@ class Constants:
     REDIRECT_URI = "http://localhost:3000"
     MICROSOFT_CLIENT_ID = "63a59a89-2d0f-4bb9-a743-1e944c2cfd3e"
 
-    ELY_PROXY_URL = "https://small-shadow-d268.ferrumthevega.workers.dev"
-    ELY_CLIENT_ID = "fvlauncher"
+    ELY_PROXY_URL = "https://fvlauncher.ferrumthevega.workers.dev"
+    ELY_CLIENT_ID = "fvlauncherapp"
 
-    LAUNCHER_VERSION = "v7.0"
-    USER_AGENT = "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:144.0) Gecko/20100101 Firefox/144.0"
+    LAUNCHER_VERSION = "v7.1"
+    USER_AGENT = "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:145.0) Gecko/20100101 Firefox/145.0"
 
 
 app = QtWidgets.QApplication(sys.argv)
