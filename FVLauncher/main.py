@@ -13,6 +13,7 @@ import multiprocessing
 from faker import Faker
 from typing import Dict, Union, Any
 import traceback
+from minecraft_launcher_lib.exceptions import AccountNotOwnMinecraft
 
 import utils
 import updater
@@ -756,7 +757,7 @@ class AccountWindow(QtWidgets.QDialog):
                         nickname = login_info["name"]
                         refresh_token = login_info["refresh_token"]
                         successfull_login = True
-                    except minecraft_launcher_lib.exceptions.AccountNotOwnMinecraft:
+                    except AccountNotOwnMinecraft:
                         self.close()
                         QtWidgets.QMessageBox.critical(
                             self,
@@ -1413,12 +1414,13 @@ class MainWindow(QtWidgets.QMainWindow):
                             )
                         )
                         self.auth_info = True, self.launch_account_type
+                        self.nickname_entry.setReadOnly(True)
                         return (
                             login_info["access_token"],
                             login_info["id"],
                             login_info["refresh_token"],
                         )
-                    except KeyError:
+                    except (KeyError, AccountNotOwnMinecraft):
                         self.auth_info = False, None
                         return "", "", ""
                 elif self.launch_account_type == "Ely.by":
@@ -1441,6 +1443,7 @@ class MainWindow(QtWidgets.QMainWindow):
                     game_uuid = full_login_info["uuid"]
                     try:
                         self.auth_info = True, self.launch_account_type
+                        self.nickname_entry.setReadOnly(True)
                         return (
                             access_token,
                             game_uuid,
@@ -1451,7 +1454,11 @@ class MainWindow(QtWidgets.QMainWindow):
                         return "", "", ""
             except requests.RequestException:
                 self.auth_info = False, None
-                return "", "", self.saved_refresh_token
+                return (
+                    self.saved_access_token,
+                    self.saved_game_uuid,
+                    self.saved_refresh_token,
+                )
         else:
             self.auth_info = False, None
             return (
