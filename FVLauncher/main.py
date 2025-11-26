@@ -1098,8 +1098,6 @@ class ProfilesWindow(QtWidgets.QDialog):
         self.create_profile_button.setText("Создать профиль")
         self.create_profile_button.clicked.connect(lambda: self.CreateOwnProfile(self))
 
-        ProfilesWindow.Pac
-
         self.show()
 
 
