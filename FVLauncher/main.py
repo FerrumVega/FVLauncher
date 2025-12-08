@@ -1,6 +1,6 @@
 import minecraft_launcher_lib
 from PySide6 import QtWidgets, QtGui, QtWebEngineWidgets, QtWebEngineCore
-from PySide6.QtCore import Signal, Qt, QTimer, QUrl
+from PySide6.QtCore import Signal, Qt, QTimer, QUrl, QUrlQuery
 import os
 import sys
 import requests
@@ -362,7 +362,8 @@ class ProjectsSearch(QtWidgets.QDialog):
                 self.setFixedSize(300, 500)
 
                 with requests.get(
-                    f'https://api.modrinth.com/v2/project/{self.project["id"]}/version?game_versions=["{self.mc_version}"]',
+                    f"https://api.modrinth.com/v2/project/{self.project['id']}/version",
+                    params={"game_versions": json.dumps(list(self.mc_version))},
                     timeout=10,
                 ) as r:
                     r.raise_for_status()
@@ -482,7 +483,7 @@ class ProjectsSearch(QtWidgets.QDialog):
             if widget is not None:
                 widget.deleteLater()
         with requests.get(
-            f"https://api.modrinth.com/v2/search?query={query}", timeout=10
+            "https://api.modrinth.com/v2/search", params={"query": query}, timeout=10
         ) as r:
             r.raise_for_status()
             info = json.loads(r.text)
@@ -733,7 +734,7 @@ class AccountWindow(QtWidgets.QDialog):
             self._make_ui(account_type)
 
         def _handle_url_change(self, url: QUrl, account_type: str):
-            successfull_login = False
+            successful_login = False
             url: str = url.toString()
             if minecraft_launcher_lib.microsoft_account.url_contains_auth_code(url):
                 auth_code = (
@@ -756,13 +757,16 @@ class AccountWindow(QtWidgets.QDialog):
                         game_uuid = login_info["id"]
                         nickname = login_info["name"]
                         refresh_token = login_info["refresh_token"]
-                        successfull_login = True
+                        successful_login = True
                     except AccountNotOwnMinecraft:
                         self.close()
                         QtWidgets.QMessageBox.critical(
                             self,
                             "Ошибка входа",
                             "Вероятнее всего, вы не владеете игрой. Использование этого аккаунта невозможно",
+                        )
+                        logging.log(
+                            "Failed login using Microsoft account (AccountNotOwnMinecraft exception)"
                         )
                 elif account_type == "Ely.by":
                     with requests.get(
@@ -785,8 +789,9 @@ class AccountWindow(QtWidgets.QDialog):
                         full_login_info = r.json()
                     game_uuid = full_login_info["uuid"]
                     nickname = full_login_info["username"]
-                    successfull_login = True
-                if successfull_login:
+                    successful_login = True
+                if successful_login:
+                    logging.log(f"Successful login using {account_type} account")
                     main_window.launch_account_type = launch_account_type
                     main_window.access_token = access_token
                     main_window.game_uuid = game_uuid
@@ -821,9 +826,18 @@ class AccountWindow(QtWidgets.QDialog):
                     )
                 )
             elif account_type == "Ely.by":
-                self.view.setUrl(
-                    f"https://account.ely.by/oauth2/v1?client_id={utils.Constants.ELY_CLIENT_ID}&redirect_uri={utils.Constants.REDIRECT_URI}&response_type=code&scope=account_info offline_access minecraft_server_session"
-                )
+                url = QUrl("https://account.ely.by/oauth2/v1")
+                query = QUrlQuery()
+                params = {
+                    "client_id": utils.Constants.ELY_CLIENT_ID,
+                    "redirect_uri": utils.Constants.REDIRECT_URI,
+                    "response_type": "code",
+                    "scope": "account_info offline_access minecraft_server_session",
+                }
+                for key, value in params.items():
+                    query.addQueryItem(key, value)
+                url.setQuery(query)
+                self.view.setUrl(url)
             self.view_layout = QtWidgets.QVBoxLayout(self)
 
             self.view_layout.addWidget(self.view)
@@ -1413,13 +1427,19 @@ class MainWindow(QtWidgets.QMainWindow):
                         )
                         self.auth_info = True, self.launch_account_type
                         self.nickname_entry.setReadOnly(True)
+                        logging.debug(
+                            "Successful login using Microsoft account (auto_login)"
+                        )
                         return (
                             login_info["access_token"],
                             login_info["id"],
                             login_info["refresh_token"],
                         )
-                    except (KeyError, AccountNotOwnMinecraft):
+                    except (KeyError, AccountNotOwnMinecraft) as e:
                         self.auth_info = False, None
+                        logging.debug(
+                            f"Failed login using Microsoft account ({e} exception) (auto_login)"
+                        )
                         return "", "", ""
                 elif self.launch_account_type == "Ely.by":
                     with requests.get(
@@ -1442,16 +1462,25 @@ class MainWindow(QtWidgets.QMainWindow):
                     try:
                         self.auth_info = True, self.launch_account_type
                         self.nickname_entry.setReadOnly(True)
+                        logging.debug(
+                            "Successful login using Ely.by account (auto_login)"
+                        )
                         return (
                             access_token,
                             game_uuid,
                             self.saved_refresh_token,
                         )
                     except KeyError:
+                        logging.debug(
+                            "Failed login using Microsoft account (KeyError exception) (auto_login)"
+                        )
                         self.auth_info = False, None
                         return "", "", ""
-            except requests.RequestException:
+            except requests.RequestException as e:
                 self.auth_info = False, None
+                logging.debug(
+                    f"Failed login using {self.launch_account_type} account ({e} exception) (auto_login)"
+                )
                 return (
                     self.saved_access_token,
                     self.saved_game_uuid,
@@ -1459,6 +1488,9 @@ class MainWindow(QtWidgets.QMainWindow):
                 )
         else:
             self.auth_info = False, None
+            logging.debug(
+                f"Failed login using {self.launch_account_type} account (No Internet connection) (auto_login)"
+            )
             return (
                 self.saved_access_token,
                 self.saved_game_uuid,
@@ -1612,12 +1644,13 @@ class MainWindow(QtWidgets.QMainWindow):
         if not self.no_internet_connection:
             try:
                 self.rpc.connect()
-                logging.debug("Rpc successfully connected")
+                logging.debug("Rpc successfuly connected")
             except pypresence.exceptions.DiscordNotFound as e:
                 logging.debug(f"There was an error while connecting rpc: {e}")
                 pass
         utils.start_rich_presence(self.rpc)
 
+        logging.debug("Logging in account...")
         self.access_token, self.game_uuid, self.refresh_token = self.auto_login()
         logging.debug(f"Chosen account type: {self.launch_account_type}")
         logging.debug(f"Access token: {utils.hide_security_data(self.access_token)}")
@@ -1653,13 +1686,16 @@ class MainWindow(QtWidgets.QMainWindow):
                     daemon=False,
                 ).start()
                 sys.exit()
+            else:
+                logging.debug(
+                    f"User cancelled update. Current launcher version: {utils.Constants.LAUNCHER_VERSION}"
+                )
 
 
 if __name__ == "__main__":
     open("FVLauncher.log", "w").close()
-    logging.warning(
-        "=== DO NOT SHARE THIS FILE TO ANYBODY OR DELETE STRINGS, THAT CONTAINS YOUR TOKEN ==="
-    )
+    logging.getLogger("requests").setLevel(logging.WARNING)
+    logging.getLogger("urllib3").setLevel(logging.WARNING)
     logging.debug("Program started its work")
     multiprocessing.freeze_support()
     config = load_config()
