@@ -14,10 +14,10 @@ from faker import Faker
 from typing import Dict, Union, Any
 import traceback
 from minecraft_launcher_lib.exceptions import AccountNotOwnMinecraft
+import time
 
 import utils
 import updater
-
 
 logging.basicConfig(
     level=logging.DEBUG,
@@ -49,6 +49,7 @@ def load_config():
         "java_arguments": "",
         "optifine": "1",
         "access_token": "",
+        "token_expires_at": "0",
         "game_uuid": "",
         "refresh_token": "",
         "launch_account_type": "Ely.by",
@@ -755,6 +756,7 @@ class AccountWindow(QtWidgets.QDialog):
                         )
                         launch_account_type = "Microsoft"
                         access_token = login_info["access_token"]
+                        token_expires_at = time.time() + 86400
                         game_uuid = login_info["id"]
                         nickname = login_info["name"]
                         refresh_token = login_info["refresh_token"]
@@ -780,6 +782,7 @@ class AccountWindow(QtWidgets.QDialog):
                         login_info = r.json()
                     launch_account_type = "Ely.by"
                     access_token = login_info["access_token"]
+                    token_expires_at = time.time() + login_info["expires_in"]
                     refresh_token = login_info["refresh_token"]
                     with requests.get(
                         "https://account.ely.by/api/account/v1/info",
@@ -795,6 +798,7 @@ class AccountWindow(QtWidgets.QDialog):
                     logging.debug(f"Successful login using {account_type} account")
                     main_window.launch_account_type = launch_account_type
                     main_window.access_token = access_token
+                    main_window.token_expires_at = token_expires_at
                     main_window.game_uuid = game_uuid
                     main_window.refresh_token = refresh_token
                     self.close()
@@ -856,6 +860,7 @@ class AccountWindow(QtWidgets.QDialog):
     def logout(self):
         main_window.game_uuid = ""
         main_window.access_token = ""
+        main_window.token_expires_at = "0"
         main_window.nickname_entry.setReadOnly(False)
         main_window.refresh_token = ""
         main_window.auth_info = False, None
@@ -1202,6 +1207,7 @@ class MainWindow(QtWidgets.QMainWindow):
         chosen_java_arguments: str,
         optifine_position: str,
         saved_access_token: str,
+        saved_token_expires_at: str,
         saved_game_uuid: str,
         saved_refresh_token: str,
         launch_account_type: str,
@@ -1222,6 +1228,7 @@ class MainWindow(QtWidgets.QMainWindow):
         self.chosen_java_arguments = chosen_java_arguments
         self.optifine_position = optifine_position
         self.saved_access_token = saved_access_token
+        self.saved_token_expires_at = saved_token_expires_at
         self.saved_game_uuid = saved_game_uuid
         self.saved_refresh_token = saved_refresh_token
         self.launch_account_type = launch_account_type
@@ -1314,6 +1321,7 @@ class MainWindow(QtWidgets.QMainWindow):
             "java_arguments": self.java_arguments,
             "optifine": int(self.optifine),
             "access_token": self.access_token,
+            "token_expires_at": self.token_expires_at,
             "game_uuid": self.game_uuid,
             "refresh_token": self.refresh_token,
             "launch_account_type": self.launch_account_type,
@@ -1415,87 +1423,102 @@ class MainWindow(QtWidgets.QMainWindow):
             and self.saved_game_uuid
             and self.saved_access_token
         ):
-            try:
-                if self.launch_account_type == "Microsoft":
-                    try:
-                        login_info = (
-                            minecraft_launcher_lib.microsoft_account.complete_refresh(
+            if time.time() > self.token_expires_at:
+                try:
+                    if self.launch_account_type == "Microsoft":
+                        try:
+                            login_info = minecraft_launcher_lib.microsoft_account.complete_refresh(
                                 utils.Constants.MICROSOFT_CLIENT_ID,
                                 None,
                                 utils.Constants.REDIRECT_URI,
                                 self.saved_refresh_token,
                             )
-                        )
-                        self.auth_info = True, self.launch_account_type
-                        self.nickname_entry.setReadOnly(True)
-                        logging.debug(
-                            "Successful login using Microsoft account (auto_login)"
-                        )
-                        return (
-                            login_info["access_token"],
-                            login_info["id"],
-                            login_info["refresh_token"],
-                        )
-                    except (KeyError, AccountNotOwnMinecraft) as e:
-                        self.auth_info = False, None
-                        logging.debug(
-                            f"Failed login using Microsoft account ({e} exception) (auto_login)"
-                        )
-                        return "", "", ""
-                elif self.launch_account_type == "Ely.by":
-                    with requests.get(
-                        f"{utils.Constants.ELY_PROXY_URL}/refresh",
-                        params={"token": self.saved_refresh_token},
-                        timeout=20,
-                        headers={"User-Agent": utils.Constants.USER_AGENT},
-                    ) as r:
-                        r.raise_for_status()
-                        login_info = r.json()
-                    access_token = login_info["access_token"]
-                    with requests.get(
-                        "https://account.ely.by/api/account/v1/info",
-                        headers={"Authorization": f"Bearer {access_token}"},
-                        timeout=10,
-                    ) as r:
-                        r.raise_for_status()
-                        full_login_info = r.json()
-                    game_uuid = full_login_info["uuid"]
-                    try:
-                        self.auth_info = True, self.launch_account_type
-                        self.nickname_entry.setReadOnly(True)
-                        logging.debug(
-                            "Successful login using Ely.by account (auto_login)"
-                        )
-                        return (
-                            access_token,
-                            game_uuid,
-                            self.saved_refresh_token,
-                        )
-                    except KeyError:
-                        logging.debug(
-                            "Failed login using Microsoft account (KeyError exception) (auto_login)"
-                        )
-                        self.auth_info = False, None
-                        return "", "", ""
-            except requests.RequestException as e:
-                self.auth_info = False, None
+                            self.auth_info = True, self.launch_account_type
+                            self.nickname_entry.setReadOnly(True)
+                            logging.debug(
+                                "Successful login using Microsoft account (auto_login)"
+                            )
+                            return (
+                                login_info["access_token"],
+                                login_info["id"],
+                                login_info["refresh_token"],
+                                time.time() + 86400,
+                            )
+                        except (KeyError, AccountNotOwnMinecraft) as e:
+                            self.auth_info = False, None
+                            logging.debug(
+                                f"Failed login using Microsoft account ({e} exception) (auto_login)"
+                            )
+                            return "", "", "", 0
+                    elif self.launch_account_type == "Ely.by":
+                        with requests.get(
+                            f"{utils.Constants.ELY_PROXY_URL}/refresh",
+                            params={"token": self.saved_refresh_token},
+                            timeout=20,
+                            headers={"User-Agent": utils.Constants.USER_AGENT},
+                        ) as r:
+                            r.raise_for_status()
+                            login_info = r.json()
+                        access_token = login_info["access_token"]
+                        with requests.get(
+                            "https://account.ely.by/api/account/v1/info",
+                            headers={"Authorization": f"Bearer {access_token}"},
+                            timeout=10,
+                        ) as r:
+                            r.raise_for_status()
+                            full_login_info = r.json()
+                        game_uuid = full_login_info["uuid"]
+                        try:
+                            self.auth_info = True, self.launch_account_type
+                            self.nickname_entry.setReadOnly(True)
+                            logging.debug(
+                                "Successful login using Ely.by account (auto_login)"
+                            )
+                            return (
+                                access_token,
+                                game_uuid,
+                                self.saved_refresh_token,
+                                time.time() + float(login_info["expires_in"]),
+                            )
+                        except KeyError:
+                            logging.debug(
+                                "Failed login using Ely.by account (KeyError exception) (auto_login)"
+                            )
+                            self.auth_info = False, None
+                            return "", "", "", 0
+                except requests.RequestException as e:
+                    self.auth_info = False, None
+                    logging.debug(
+                        f"Failed login using {self.launch_account_type} account ({e} exception) (auto_login)"
+                    )
+                    return (
+                        self.saved_access_token,
+                        self.saved_game_uuid,
+                        self.saved_refresh_token,
+                        self.token_expires_at,
+                    )
+            else:
+                self.auth_info = True, self.launch_account_type
+                self.nickname_entry.setReadOnly(True)
                 logging.debug(
-                    f"Failed login using {self.launch_account_type} account ({e} exception) (auto_login)"
+                    f"Token was not refreshed because it is still valid ({self.launch_account_type} account)"
                 )
                 return (
                     self.saved_access_token,
                     self.saved_game_uuid,
                     self.saved_refresh_token,
+                    self.token_expires_at,
                 )
         else:
             self.auth_info = False, None
             logging.debug(
-                f"Failed login using {self.launch_account_type} account (No Internet connection) (auto_login)"
+                f"Failed login using {self.launch_account_type} account (No Internet connection or there is no any accounts to login) (auto_login)"
             )
             return (
                 self.saved_access_token,
                 self.saved_game_uuid,
                 self.saved_refresh_token,
+                self.token_expires_at,
             )
 
     def _make_ui(self):
@@ -1525,6 +1548,8 @@ class MainWindow(QtWidgets.QMainWindow):
 
         self.java_arguments = self.chosen_java_arguments
         self.show_console = int(self.show_console_position)
+
+        self.token_expires_at = float(self.saved_token_expires_at)
 
         self.show_old_alphas = int(self.show_old_alphas_position)
         self.show_old_betas = int(self.show_old_betas_position)
@@ -1652,7 +1677,9 @@ class MainWindow(QtWidgets.QMainWindow):
         utils.start_rich_presence(self.rpc)
 
         logging.debug("Logging in account...")
-        self.access_token, self.game_uuid, self.refresh_token = self.auto_login()
+        self.access_token, self.game_uuid, self.refresh_token, self.token_expires_at = (
+            self.auto_login()
+        )
         logging.debug(f"Chosen account type: {self.launch_account_type}")
         logging.debug(f"Access token: {utils.hide_security_data(self.access_token)}")
         logging.debug(f"Refresh token: {utils.hide_security_data(self.refresh_token)}")
@@ -1709,6 +1736,7 @@ if __name__ == "__main__":
         config["java_arguments"],
         config["optifine"],
         config["access_token"],
+        config["token_expires_at"],
         config["game_uuid"],
         config["refresh_token"],
         config["launch_account_type"],
