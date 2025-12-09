@@ -18,6 +18,7 @@ from minecraft_launcher_lib.exceptions import AccountNotOwnMinecraft
 import utils
 import updater
 
+
 logging.basicConfig(
     level=logging.DEBUG,
     filename="FVLauncher.log",
@@ -765,7 +766,7 @@ class AccountWindow(QtWidgets.QDialog):
                             "Ошибка входа",
                             "Вероятнее всего, вы не владеете игрой. Использование этого аккаунта невозможно",
                         )
-                        logging.log(
+                        logging.debug(
                             "Failed login using Microsoft account (AccountNotOwnMinecraft exception)"
                         )
                 elif account_type == "Ely.by":
@@ -791,7 +792,7 @@ class AccountWindow(QtWidgets.QDialog):
                     nickname = full_login_info["username"]
                     successful_login = True
                 if successful_login:
-                    logging.log(f"Successful login using {account_type} account")
+                    logging.debug(f"Successful login using {account_type} account")
                     main_window.launch_account_type = launch_account_type
                     main_window.access_token = access_token
                     main_window.game_uuid = game_uuid
