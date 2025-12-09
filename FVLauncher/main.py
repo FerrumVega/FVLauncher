@@ -365,7 +365,7 @@ class ProjectsSearch(QtWidgets.QDialog):
 
                 with requests.get(
                     f"https://api.modrinth.com/v2/project/{self.project['id']}/version",
-                    params={"game_versions": json.dumps(list(self.mc_version))},
+                    params={"game_versions": json.dumps([self.mc_version])},
                     timeout=10,
                 ) as r:
                     r.raise_for_status()
