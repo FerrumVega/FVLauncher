@@ -146,6 +146,15 @@ class ProjectsSearch(QtWidgets.QDialog):
                                     self, other_info[0], other_info[1]
                                 )
 
+                def reject(self):
+                    self.close()
+                    return super().reject()
+
+                def closeEvent(self, event: QtGui.QCloseEvent):
+                    if hasattr(self, "download_project_file_process"):
+                        self.download_project_file_process.terminate()
+                    return super().closeEvent(event)
+
                 def download_project_process(
                     self,
                     project_file: Dict[Any, Any],
@@ -435,13 +444,15 @@ class ProjectsSearch(QtWidgets.QDialog):
             self.project_title.setFixedWidth(260)
 
             self.icon = QtGui.QPixmap()
-            with requests.get(self.project["icon_url"], timeout=10) as r:
-                r.raise_for_status()
-                self.icon.loadFromData(r.content)
-            self.project_icon = QtWidgets.QLabel(self)
-            self.icon = self.icon.scaled(100, 100)
-            self.project_icon.setPixmap(self.icon)
-            self.project_icon.move(100, 40)
+            self.icon_url = self.project["icon_url"]
+            if self.icon_url:
+                with requests.get(self.icon_url, timeout=10) as r:
+                    r.raise_for_status()
+                    self.icon.loadFromData(r.content)
+                self.project_icon = QtWidgets.QLabel(self)
+                self.icon = self.icon.scaled(100, 100)
+                self.project_icon.setPixmap(self.icon)
+                self.project_icon.move(100, 40)
 
             self.project_description = QtWidgets.QLabel(self)
             self.project_description.move(20, 140)
@@ -1522,19 +1533,6 @@ class MainWindow(QtWidgets.QMainWindow):
             )
 
     def _make_ui(self):
-        # self.setStyleSheet(
-        #     f"""
-        #     QMainWindow {{
-        #         background-image: url("assets/background.png");
-        #         background-repeat: no-repeat;
-        #         background-position: center;
-        #         background-attachment: fixed;
-        #     }}
-        # """
-        # )
-
-        # print(utils.app.palette().accent().color().name())
-
         self.setWindowTitle("FVLauncher")
         self.setWindowIcon(utils.window_icon)
         self.setFixedSize(300, 500)
