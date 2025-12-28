@@ -26,7 +26,7 @@ class Constants:
     ELY_PROXY_URL = "https://fvlauncher.ferrumthevega.workers.dev"
     ELY_CLIENT_ID = "fvlauncherapp"
 
-    LAUNCHER_VERSION = "v7.3.2"
+    LAUNCHER_VERSION = "v7.4"
     USER_AGENT = "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:145.0) Gecko/20100101 Firefox/145.0"
 
 
@@ -76,7 +76,7 @@ def boolean_to_sign_status(auth_info: Tuple[Optional[bool], Optional[str]]):
     return f"{sign_text} (Аккаунт {auth_info[1]})" if auth_info[0] else sign_text
 
 
-def download_profile_from_mrpack(
+def download_instance_from_mrpack(
     minecraft_directory: str,
     mrpack_path: str,
     no_internet_connection: bool,
@@ -84,30 +84,27 @@ def download_profile_from_mrpack(
 ):
     if mrpack_path:
         mrpack_info = minecraft_launcher_lib.mrpack.get_mrpack_information(mrpack_path)
-        profile_path = os.path.join(
+        instance_path = os.path.join(
             minecraft_directory,
-            "profiles",
+            "instances",
             mrpack_info["name"],
         )
         minecraft_launcher_lib.mrpack.install_mrpack(
             mrpack_path,
             minecraft_directory,
-            profile_path,
+            instance_path,
             callback={"setStatus": lambda value: queue.put(("status", value))},
         )
         with open(
-            os.path.join(profile_path, "profile_info.json"), "w", encoding="utf-8"
-        ) as profile_info_file:
+            os.path.join(instance_path, "instance_info.json"), "w", encoding="utf-8"
+        ) as instance_info_file:
             json.dump(
-                [
-                    {
-                        "mc_version": minecraft_launcher_lib.mrpack.get_mrpack_launch_version(
-                            mrpack_path
-                        )
-                    },
-                    [],
-                ],
-                profile_info_file,
+                {
+                    "mc_version": minecraft_launcher_lib.mrpack.get_mrpack_launch_version(
+                        mrpack_path
+                    )
+                },
+                instance_info_file,
                 indent=4,
             )
         open(
@@ -308,22 +305,22 @@ def resolve_version_name(
                     ):
                         return folder_name, {}
     else:
-        for v in os.listdir(os.path.join(minecraft_directory, "profiles")):
-            profile_info_path = os.path.join(
+        for v in os.listdir(os.path.join(minecraft_directory, "instances")):
+            instance_info_path = os.path.join(
                 minecraft_directory,
-                "profiles",
+                "instances",
                 v,
-                "profile_info.json",
+                "instance_info.json",
             )
-            if version == v and os.path.isfile(profile_info_path):
-                with open(profile_info_path, encoding="utf-8") as profile_info_file:
-                    vanilla_version = json.load(profile_info_file)[0]["mc_version"]
+            if version == v and os.path.isfile(instance_info_path):
+                with open(instance_info_path, encoding="utf-8") as instance_info_file:
+                    vanilla_version = json.load(instance_info_file)["mc_version"]
                     if resolve_version_name(
                         vanilla_version, mod_loader, minecraft_directory, queue
                     )[0]:
                         return vanilla_version, {
                             "game_directory": os.path.join(
-                                minecraft_directory, "profiles", v
+                                minecraft_directory, "instances", v
                             )
                         }
                     elif mod_loader == "vanilla":
@@ -551,18 +548,18 @@ def launch(
                     )
             elif os.path.isfile(
                 os.path.join(
-                    minecraft_directory, "profiles", version, "profile_info.json"
+                    minecraft_directory, "instances", version, "instance_info.json"
                 )
             ):
                 with open(
                     os.path.join(
                         minecraft_directory,
-                        "profiles",
+                        "instances",
                         version,
-                        "profile_info.json",
+                        "instance_info.json",
                     )
-                ) as profile_info_file:
-                    version_with_loader = json.load(profile_info_file)[0]["mc_version"]
+                ) as instance_info_file:
+                    version_with_loader = json.load(instance_info_file)["mc_version"]
                     with open(
                         os.path.join(
                             minecraft_directory,
@@ -575,7 +572,7 @@ def launch(
                         raw_version = json.load(file_with_downloads)["inheritsFrom"]
                         optifine_path = os.path.join(
                             minecraft_directory,
-                            "profiles",
+                            "instances",
                             version,
                             "mods",
                             "optifine.jar",
@@ -656,7 +653,6 @@ def only_project_install(
     project_version: Dict[Any, Any],
     project: Dict[Any, Any],
     project_file_path: str,
-    profile_info_path: str,
     queue: Queue,
 ):
     with requests.get(project_version["url"], stream=True, timeout=10) as r:
@@ -675,18 +671,13 @@ def only_project_install(
                         )
                     )
                     project_file.write(chunk)
-    with open(profile_info_path, encoding="utf-8") as profile_info_file:
-        profile_info = json.load(profile_info_file)
-    if [project_version, project] not in profile_info[1]:
-        profile_info[1].append([project_version, project])
-        with open(profile_info_path, "w", encoding="utf-8") as profile_info_file:
-            json.dump(profile_info, profile_info_file, indent=4)
     queue.put(
         (
             "show_message",
             "information",
             "Проект установлен",
             f"Проект {project['title']} был успешно установлен.",
+            project_file_path,
         )
     )
     logging.info(f"Project {project['title']} installed")

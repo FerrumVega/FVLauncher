@@ -11,7 +11,7 @@ import pypresence.exceptions
 import logging
 import multiprocessing
 from faker import Faker
-from typing import Dict, Union, Any
+from typing import Dict, Union, Any, Optional
 import traceback
 from minecraft_launcher_lib.exceptions import AccountNotOwnMinecraft
 import time
@@ -59,7 +59,7 @@ def load_config():
         "show_snapshots": "0",
         "show_releases": "1",
         "show_other_versions": "1",
-        "show_profiles_and_packs": "1",
+        "show_instances_and_packs": "1",
         "minecraft_directory": "",
         "allow_experiments": "0",
         "hover_color": "",
@@ -159,40 +159,40 @@ class ProjectsSearch(QtWidgets.QDialog):
                     self,
                     project_file: Dict[Any, Any],
                     project: Dict[Any, Any],
-                    profile: str,
+                    instance: Optional[str],
                     mc_version: str,
                     loader: str,
                 ):
-                    if profile:
+                    if instance:
                         with open(
                             os.path.join(
                                 self.minecraft_directory,
-                                "profiles",
-                                profile,
-                                "profile_info.json",
+                                "instances",
+                                instance,
+                                "instance_info.json",
                             ),
                             encoding="utf-8",
-                        ) as profile_info_file:
-                            profile_info = json.load(profile_info_file)
+                        ) as instance_info_file:
+                            instance_info = json.load(instance_info_file)
                         with open(
                             os.path.join(
                                 self.minecraft_directory,
                                 "versions",
-                                profile_info[0]["mc_version"],
-                                f"{profile_info[0]['mc_version']}.json",
+                                instance_info["mc_version"],
+                                f"{instance_info['mc_version']}.json",
                             ),
                             encoding="utf-8",
                         ) as mc_version_file:
                             try:
                                 inherits_from = json.load(mc_version_file).get(
-                                    "inheritsFrom", profile_info[0]["mc_version"]
+                                    "inheritsFrom", instance_info["mc_version"]
                                 )
                                 if inherits_from != mc_version:
                                     if (
                                         QtWidgets.QMessageBox.warning(
                                             self,
                                             "Предупреждение",
-                                            f"Версия игры профиля не совпадает с версией игры проекта, который вы выбрали\nВерсия игры проекта: {mc_version}\nВерсия игры сборки: {inherits_from}.\nВы уверены, что хотите установить проект на этот профиль?",
+                                            f"Версия игры экземпляра не совпадает с версией игры проекта, который вы выбрали\nВерсия игры проекта: {mc_version}\nВерсия игры сборки: {inherits_from}.\nВы уверены, что хотите установить проект на этот экземпляр?",
                                             QtWidgets.QMessageBox.StandardButton.Yes
                                             | QtWidgets.QMessageBox.StandardButton.No,
                                         )
@@ -204,7 +204,7 @@ class ProjectsSearch(QtWidgets.QDialog):
                                     QtWidgets.QMessageBox.warning(
                                         self,
                                         "Предупреждение",
-                                        "Вероятнее всего, вы пытаетесь установить мод на ванильный профиль. Вы уверены, что хотите установить мод на этот профиль?",
+                                        "Вероятнее всего, вы пытаетесь установить мод на ванильный экземпляр. Вы уверены, что хотите установить мод на этот экземпляр?",
                                         QtWidgets.QMessageBox.StandardButton.Yes
                                         | QtWidgets.QMessageBox.StandardButton.No,
                                     )
@@ -215,14 +215,14 @@ class ProjectsSearch(QtWidgets.QDialog):
                     type_to_dir = {
                         "mod": "mods",
                         "resourcepack": "resourcepacks",
-                        "datapack": "datapacks",
                         "shader": "shaderpacks",
+                        "modpack": None,
                     }
-                    if profile:
+                    if instance:
                         project_file_path = os.path.join(
                             self.minecraft_directory,
-                            "profiles",
-                            profile,
+                            "instances",
+                            instance,
                             (
                                 type_to_dir[project["project_type"]]
                                 if loader != "datapack"
@@ -230,36 +230,22 @@ class ProjectsSearch(QtWidgets.QDialog):
                             ),
                             project_file["filename"],
                         )
-                        profile_info_path = os.path.join(
+                    elif project["project_type"] != "modpack":
+                        project_file_path = os.path.join(
                             self.minecraft_directory,
-                            "profiles",
-                            profile,
-                            "profile_info.json",
+                            (
+                                type_to_dir[project["project_type"]]
+                                if loader != "datapack"
+                                else type_to_dir["datapack"]
+                            ),
+                            project_file["filename"],
                         )
                     else:
                         project_file_path = os.path.join(
-                            self.minecraft_directory,
-                            (
-                                type_to_dir[project["project_type"]]
-                                if loader != "datapack"
-                                else type_to_dir["datapack"]
-                            ),
-                            project_file["filename"],
+                            self.minecraft_directory, project_file["filename"]
                         )
-                        profile_info_path = os.path.join(
-                            self.minecraft_directory, "profile_info.json"
-                        )
-                        if not os.path.isfile(profile_info_path):
-                            with open(
-                                profile_info_path, "w", encoding="utf-8"
-                            ) as profile_info_file:
-                                json.dump(
-                                    [{"mc_version": "any"}, []],
-                                    profile_info_file,
-                                    indent=4,
-                                )
-
-                    os.makedirs(os.path.dirname(project_file_path), exist_ok=True)
+                    if project["project_type"] != "modpack":
+                        os.makedirs(os.path.dirname(project_file_path), exist_ok=True)
 
                     self.queue = multiprocessing.Queue()
                     self.download_project_file_process = multiprocessing.Process(
@@ -269,7 +255,6 @@ class ProjectsSearch(QtWidgets.QDialog):
                             project_file,
                             project,
                             project_file_path,
-                            profile_info_path,
                         ),
                         kwargs={"queue": self.queue},
                         daemon=True,
@@ -280,77 +265,65 @@ class ProjectsSearch(QtWidgets.QDialog):
                     self.timer.start(200)
 
                 def _make_ui(self):
-                    profiles = []
-                    if self.project["project_type"] not in [
-                        "mod",
-                        "shader",
-                        "datapack",
-                        "resourcepack",
-                    ]:
-                        QtWidgets.QMessageBox.critical(
-                            self,
-                            "Ошибка",
-                            "Вы не можете скачать плагин/модпак в профиль",
-                        )
-                        return
-                    for profile in os.listdir(
-                        os.path.join(self.minecraft_directory, "profiles")
+                    instances = []
+                    for instance in os.listdir(
+                        os.path.join(self.minecraft_directory, "instances")
                     ):
                         if os.path.isfile(
                             os.path.join(
                                 self.minecraft_directory,
-                                "profiles",
-                                profile,
-                                "profile_info.json",
+                                "instances",
+                                instance,
+                                "instance_info.json",
                             )
                         ):
-                            profiles.append(profile)
+                            instances.append(instance)
                     self.setModal(True)
-                    self.setWindowTitle("Выбор профиля для загрузки проекта")
+                    self.setWindowTitle("Выбор экземпляра для загрузки проекта")
                     self.setFixedSize(300, 500)
 
                     self.progressbar = QtWidgets.QProgressBar(self, textVisible=False)
                     self.progressbar.setFixedWidth(260)
                     self.progressbar.move(20, 430)
 
-                    self.profiles_container = QtWidgets.QWidget()
-                    self.profiles_layout = QtWidgets.QVBoxLayout(
-                        self.profiles_container
+                    self.instances_container = QtWidgets.QWidget()
+                    self.instances_layout = QtWidgets.QVBoxLayout(
+                        self.instances_container
                     )
 
                     self.scroll_area = QtWidgets.QScrollArea(self)
                     self.scroll_area.setFixedSize(300, 200)
-                    self.scroll_area.setWidget(self.profiles_container)
+                    self.scroll_area.setWidget(self.instances_container)
                     self.scroll_area.setWidgetResizable(True)
 
-                    for profile in profiles:
+                    for instance in instances:
                         download_button = ClickableLabel(self)
-                        download_button.setText(profile)
+                        download_button.setText(instance)
                         download_button.setAlignment(Qt.AlignmentFlag.AlignCenter)
                         download_button.clicked.connect(
                             lambda *args,
-                            cur_profile=profile: self.download_project_process(
+                            cur_instance=instance: self.download_project_process(
                                 self.loaders_and_files[self.loader],
                                 self.project,
-                                cur_profile,
+                                cur_instance,
                                 self.mc_version,
                                 self.loader,
                             )
                         )
-                        self.profiles_layout.addWidget(download_button)
+                        self.instances_layout.addWidget(download_button)
                     download_button = ClickableLabel(self)
                     download_button.setText("В корень (без сборки)")
                     download_button.clicked.connect(
-                        lambda *args, cur_profile="": self.download_project_process(
+                        lambda *args, cur_instance="": self.download_project_process(
                             self.loaders_and_files[self.loader],
                             self.project,
-                            cur_profile,
+                            cur_instance,
                             self.mc_version,
                             self.loader,
                         )
                     )
                     download_button.setAlignment(Qt.AlignmentFlag.AlignCenter)
-                    self.profiles_layout.addWidget(download_button)
+                    self.instances_layout.addWidget(download_button)
 
                     self.show()
 
@@ -366,6 +339,40 @@ class ProjectsSearch(QtWidgets.QDialog):
                 self.mc_version = mc_version
                 self.minecraft_directory = minecraft_directory
                 self._make_ui()
+
+            def closeEvent(self, event: QtGui.QCloseEvent):
+                if hasattr(self, "import_mrpack_process"):
+                    self.import_mrpack_process.terminate()
+                if hasattr(self, "download_project_file_process"):
+                    self.download_project_file_process.terminate()
+                return super().closeEvent(event)
+
+            def _update_ui_from_queue(self):
+                while not self.queue.empty():
+                    var, value, *other_info = self.queue.get_nowait()
+                    if var == "progressbar":
+                        self.progressbar.setValue(value)
+                    elif var == "status":
+                        self.mrpack_import_status.setText(value)
+                    elif var == "log_exception":
+                        log_exception(*other_info)
+                    elif var == "show_message":
+                        if value == "critical":
+                            QtWidgets.QMessageBox.critical(
+                                self, other_info[1], other_info[2]
+                            )
+                        elif value == "warning":
+                            QtWidgets.QMessageBox.warning(
+                                self, other_info[1], other_info[2]
+                            )
+                        elif value == "information":
+                            if len(other_info) > 2 and other_info[2]:
+                                InstancesWindow._handle_open_mrpack_choosing_window(
+                                    self, other_info[2]
+                                )
+                            QtWidgets.QMessageBox.information(
+                                self, other_info[0], other_info[1]
+                            )
 
             def _make_ui(self):
                 self.setModal(True)
@@ -393,20 +400,45 @@ class ProjectsSearch(QtWidgets.QDialog):
                 self.scroll_area.setWidget(self.loaders_container)
                 self.scroll_area.setWidgetResizable(True)
 
+                if self.project["project_type"] == "modpack":
+                    self.progressbar = QtWidgets.QProgressBar(self, textVisible=False)
+                    self.progressbar.setFixedWidth(260)
+                    self.progressbar.move(20, 430)
+
+                    self.mrpack_import_status = QtWidgets.QLabel(self)
+                    self.mrpack_import_status.setFixedWidth(290)
+                    self.mrpack_import_status.setAlignment(Qt.AlignmentFlag.AlignCenter)
+                    self.mrpack_import_status.move(5, 450)
+
                 for loader in self.loaders_and_files:
                     download_button = ClickableLabel(self)
                     download_button.setAlignment(Qt.AlignmentFlag.AlignCenter)
                     download_button.setText(loader)
-                    download_button.clicked.connect(
-                        lambda *args, current_loader=loader: self.ProjectInstallWindow(
-                            self,
-                            self.project,
-                            self.mc_version,
-                            current_loader,
-                            self.minecraft_directory,
-                            self.loaders_and_files,
+
+                    if self.project["project_type"] == "modpack":
+                        download_button.clicked.connect(
+                            lambda *args,
+                            current_loader=loader: self.ProjectInstallWindow.download_project_process(
+                                self,
+                                self.loaders_and_files[current_loader],
+                                self.project,
+                                None,
+                                self.mc_version,
+                                current_loader,
+                            )
                         )
-                    )
+                    else:
+                        download_button.clicked.connect(
+                            lambda *args,
+                            current_loader=loader: self.ProjectInstallWindow(
+                                self,
+                                self.project,
+                                self.mc_version,
+                                current_loader,
+                                self.minecraft_directory,
+                                self.loaders_and_files,
+                            )
+                        )
                     self.loaders_layout.addWidget(download_button)
 
                 self.show()
@@ -419,7 +451,7 @@ class ProjectsSearch(QtWidgets.QDialog):
             self.type_to_russian_name = {
                 "mod": "мод",
                 "resourcepack": "ресурспак",
-                "datapack": "датапак",
+                "modpack": "сборка",
                 "shader": "шейдер",
             }
             with requests.get(
@@ -484,6 +516,12 @@ class ProjectsSearch(QtWidgets.QDialog):
                 self.versions_layout.addWidget(w)
 
             self.show()
+
+    def closeEvent(self, event: QtGui.QCloseEvent):
+        for filename in os.listdir(self.minecraft_directory):
+            if filename.endswith(".mrpack"):
+                os.remove(os.path.join(self.minecraft_directory, filename))
+        return super().closeEvent(event)
 
     def __init__(self, parent: QtWidgets.QWidget, minecraft_directory: str):
         super().__init__(parent)
@@ -552,7 +590,7 @@ class SettingsWindow(QtWidgets.QDialog):
 
     def closeEvent(self, event: QtGui.QCloseEvent):
         os.makedirs(
-            os.path.join(main_window.minecraft_directory, "profiles"), exist_ok=True
+            os.path.join(main_window.minecraft_directory, "instances"), exist_ok=True
         )
         main_window.java_arguments = self.java_arguments_entry.text()
         main_window.show_console = self.show_console_checkbox.isChecked()
@@ -561,8 +599,8 @@ class SettingsWindow(QtWidgets.QDialog):
         main_window.show_snapshots = self.snapshots_checkbox.isChecked()
         main_window.show_releases = self.releases_checkbox.isChecked()
         main_window.show_other_versions = self.other_versions_checkbox.isChecked()
-        main_window.show_profiles_and_packs = (
-            self.profiles_and_packs_checkbox.isChecked()
+        main_window.show_instances_and_packs = (
+            self.instances_and_packs_checkbox.isChecked()
         )
         return super().closeEvent(event)
 
@@ -639,13 +677,13 @@ class SettingsWindow(QtWidgets.QDialog):
             (self.main_window_width - self.checkbox_width) // 2, 225
         )
 
-        self.profiles_and_packs_checkbox = QtWidgets.QCheckBox(self)
-        self.profiles_and_packs_checkbox.setChecked(
-            bool(main_window.show_profiles_and_packs)
+        self.instances_and_packs_checkbox = QtWidgets.QCheckBox(self)
+        self.instances_and_packs_checkbox.setChecked(
+            bool(main_window.show_instances_and_packs)
         )
-        self.profiles_and_packs_checkbox.setText("Профили и сборки")
-        self.checkbox_width = self.profiles_and_packs_checkbox.sizeHint().width()
-        self.profiles_and_packs_checkbox.move(
+        self.instances_and_packs_checkbox.setText("Экземпляры и сборки")
+        self.checkbox_width = self.instances_and_packs_checkbox.sizeHint().width()
+        self.instances_and_packs_checkbox.move(
             (self.main_window_width - self.checkbox_width) // 2, 245
         )
 
@@ -655,7 +693,7 @@ class SettingsWindow(QtWidgets.QDialog):
             self.snapshots_checkbox,
             self.releases_checkbox,
             self.other_versions_checkbox,
-            self.profiles_and_packs_checkbox,
+            self.instances_and_packs_checkbox,
         ):
             widget.stateChanged.connect(
                 lambda: main_window.show_versions(
@@ -665,7 +703,7 @@ class SettingsWindow(QtWidgets.QDialog):
                     self.snapshots_checkbox.isChecked(),
                     self.releases_checkbox.isChecked(),
                     self.other_versions_checkbox.isChecked(),
-                    self.profiles_and_packs_checkbox.isChecked(),
+                    self.instances_and_packs_checkbox.isChecked(),
                     main_window.versions_combobox.currentText(),
                 )
             )
@@ -714,13 +752,13 @@ class AccountWindow(QtWidgets.QDialog):
 
             self.view = QtWebEngineWidgets.QWebEngineView()
             self.view.setPage(
-                QtWebEngineCore.QWebEnginePage(browser_profile, self.view)
+                QtWebEngineCore.QWebEnginePage(browser_instance, self.view)
             )
             if self.launch_account_type == "Ely.by":
                 self.view.setUrl("https://ely.by/skins")
             elif self.launch_account_type == "Microsoft":
                 self.view.setUrl(
-                    "https://www.minecraft.net/ru-ru/msaprofile/mygames/editskin"
+                    "https://www.minecraft.net/ru-ru/msainstance/mygames/editskin"
                 )
 
             self.view_layout = QtWidgets.QVBoxLayout(self)
@@ -828,7 +866,7 @@ class AccountWindow(QtWidgets.QDialog):
 
             self.view = QtWebEngineWidgets.QWebEngineView()
             self.view.setPage(
-                QtWebEngineCore.QWebEnginePage(browser_profile, self.view)
+                QtWebEngineCore.QWebEnginePage(browser_instance, self.view)
             )
 
             self.view.urlChanged.connect(
@@ -878,8 +916,8 @@ class AccountWindow(QtWidgets.QDialog):
         self.sign_status_label.setText(
             utils.boolean_to_sign_status(main_window.auth_info)
         )
-        browser_profile.clearHttpCache()
-        browser_profile.cookieStore().deleteAllCookies()
+        browser_instance.clearHttpCache()
+        browser_instance.cookieStore().deleteAllCookies()
 
     def _make_ui(self):
         self.setWindowTitle("Аккаунт")
@@ -925,8 +963,8 @@ class AccountWindow(QtWidgets.QDialog):
         self.show()
 
 
-class ProfilesWindow(QtWidgets.QDialog):
-    class CreateOwnProfile(QtWidgets.QDialog):
+class InstancesWindow(QtWidgets.QDialog):
+    class CreateOwnInstance(QtWidgets.QDialog):
         def __init__(self, parent: QtWidgets.QWidget):
             super().__init__(parent)
             self._make_ui()
@@ -934,9 +972,9 @@ class ProfilesWindow(QtWidgets.QDialog):
         def _make_ui(self):
             def create_folder():
                 version_folder_name = os.path.basename(
-                    self.profile_version_entry.text()
+                    self.instance_version_entry.text()
                 )
-                profile_name = self.profile_name_entry.text()
+                instance_name = self.instance_name_entry.text()
                 version_installed = os.path.isfile(
                     os.path.join(
                         main_window.minecraft_directory,
@@ -945,24 +983,21 @@ class ProfilesWindow(QtWidgets.QDialog):
                         "installed.FVL",
                     )
                 )
-                if profile_name and version_folder_name and version_installed:
-                    profile_path = os.path.join(
+                if instance_name and version_folder_name and version_installed:
+                    instance_path = os.path.join(
                         main_window.minecraft_directory,
-                        "profiles",
-                        profile_name,
+                        "instances",
+                        instance_name,
                     )
-                    os.makedirs(profile_path, exist_ok=True)
+                    os.makedirs(instance_path, exist_ok=True)
                     with open(
-                        os.path.join(profile_path, "profile_info.json"),
+                        os.path.join(instance_path, "instance_info.json"),
                         "w",
                         encoding="utf-8",
-                    ) as profile_info_file:
+                    ) as instance_info_file:
                         json.dump(
-                            [
-                                {"mc_version": version_folder_name},
-                                [],
-                            ],
-                            profile_info_file,
+                            {"mc_version": version_folder_name},
+                            instance_info_file,
                             indent=4,
                         )
                     main_window.show_versions(
@@ -972,59 +1007,59 @@ class ProfilesWindow(QtWidgets.QDialog):
                         main_window.show_snapshots,
                         main_window.show_releases,
                         main_window.show_other_versions,
-                        main_window.show_profiles_and_packs,
+                        main_window.show_instances_and_packs,
                         main_window.versions_combobox.currentText(),
                     )
                     QtWidgets.QMessageBox.information(
                         self,
-                        "Создание профиля",
-                        f"Папка профиль успешно создана по пути {profile_path}",
+                        "Создание экземпляра",
+                        f"Папка экземпляра успешно создана по пути {instance_path}",
                     )
-                    logging.info(f"New profile created, path: {profile_path}")
+                    logging.info(f"New instance created, path: {instance_path}")
                 elif not version_installed:
                     QtWidgets.QMessageBox.critical(
                         self,
-                        "Ошибка создания профиля",
+                        "Ошибка создания экземпляра",
                         "Выбранная вами версия некорректно устанолена",
                     )
                 else:
                     QtWidgets.QMessageBox.critical(
                         self,
-                        "Ошибка создания профиля",
-                        "Укажите название профиля и выберите папку версии",
+                        "Ошибка создания экземпляра",
+                        "Укажите название экземпляра и выберите папку версии",
                     )
 
             self.setModal(True)
-            self.setWindowTitle("Создание профиля")
+            self.setWindowTitle("Создание экземпляра")
             self.setFixedSize(300, 150)
 
-            self.profile_name_entry = QtWidgets.QLineEdit(self)
-            self.profile_name_entry.setFixedWidth(240)
-            self.profile_name_entry.setPlaceholderText("Название профиля")
-            self.profile_name_entry.move(10, 20)
+            self.instance_name_entry = QtWidgets.QLineEdit(self)
+            self.instance_name_entry.setFixedWidth(240)
+            self.instance_name_entry.setPlaceholderText("Название экземпляра")
+            self.instance_name_entry.move(10, 20)
 
-            self.random_profile_name_button = QtWidgets.QPushButton(self)
-            self.random_profile_name_button.setFixedWidth(30)
-            self.random_profile_name_button.setText("🎲")
-            self.random_profile_name_button.move(260, 20)
-            self.random_profile_name_button.clicked.connect(
-                lambda: self.profile_name_entry.setText(
+            self.random_instance_name_button = QtWidgets.QPushButton(self)
+            self.random_instance_name_button.setFixedWidth(30)
+            self.random_instance_name_button.setText("🎲")
+            self.random_instance_name_button.move(260, 20)
+            self.random_instance_name_button.clicked.connect(
+                lambda: self.instance_name_entry.setText(
                     Faker().word(part_of_speech="adjective").capitalize()
                     + Faker().word(part_of_speech="noun").capitalize()
                 )
             )
 
-            self.profile_version_entry = QtWidgets.QLineEdit(self)
-            self.profile_version_entry.setFixedWidth(240)
-            self.profile_version_entry.setPlaceholderText("Путь к папке версии")
-            self.profile_version_entry.move(10, 50)
+            self.instance_version_entry = QtWidgets.QLineEdit(self)
+            self.instance_version_entry.setFixedWidth(240)
+            self.instance_version_entry.setPlaceholderText("Путь к папке версии")
+            self.instance_version_entry.move(10, 50)
 
             self.choose_version_folder_button = QtWidgets.QPushButton(self)
             self.choose_version_folder_button.setFixedWidth(30)
             self.choose_version_folder_button.setText("📂")
             self.choose_version_folder_button.move(260, 50)
             self.choose_version_folder_button.clicked.connect(
-                lambda: self.profile_version_entry.setText(
+                lambda: self.instance_version_entry.setText(
                     QtWidgets.QFileDialog.getExistingDirectory(
                         self,
                         "Выбор папки версии",
@@ -1033,11 +1068,11 @@ class ProfilesWindow(QtWidgets.QDialog):
                 )
             )
 
-            self.create_own_profile_button = QtWidgets.QPushButton(self)
-            self.create_own_profile_button.setFixedWidth(120)
-            self.create_own_profile_button.move(90, 80)
-            self.create_own_profile_button.setText("Создать профиль")
-            self.create_own_profile_button.clicked.connect(create_folder)
+            self.create_own_instance_button = QtWidgets.QPushButton(self)
+            self.create_own_instance_button.setFixedWidth(120)
+            self.create_own_instance_button.move(90, 80)
+            self.create_own_instance_button.setText("Создать экземпляр")
+            self.create_own_instance_button.clicked.connect(create_folder)
 
             self.show()
 
@@ -1067,7 +1102,7 @@ class ProfilesWindow(QtWidgets.QDialog):
                     main_window.show_snapshots,
                     main_window.show_releases,
                     main_window.show_other_versions,
-                    main_window.show_profiles_and_packs,
+                    main_window.show_instances_and_packs,
                     main_window.versions_combobox.currentText(),
                 )
             elif var == "log_exception":
@@ -1083,16 +1118,17 @@ class ProfilesWindow(QtWidgets.QDialog):
                     )
 
     def _handle_open_mrpack_choosing_window(self, mrpack_path):
-        mrpack_path = QtWidgets.QFileDialog.getOpenFileName(
-            self, "Выберите файл сборки", "", "*.mrpack"
-        )[0].replace("/", "\\")
+        if mrpack_path is None:
+            mrpack_path = QtWidgets.QFileDialog.getOpenFileName(
+                self, "Выберите файл сборки", "", "*.mrpack"
+            )[0].replace("/", "\\")
 
         if mrpack_path:
             self.queue = multiprocessing.Queue()
             self.import_mrpack_process = multiprocessing.Process(
                 target=utils.run_in_process_with_exceptions_logging,
                 args=(
-                    utils.download_profile_from_mrpack,
+                    utils.download_instance_from_mrpack,
                     main_window.minecraft_directory,
                     mrpack_path,
                     main_window.no_internet_connection,
@@ -1107,7 +1143,7 @@ class ProfilesWindow(QtWidgets.QDialog):
 
     def _make_ui(self):
         self.setModal(True)
-        self.setWindowTitle("Создание/импорт профиля/сборки")
+        self.setWindowTitle("Создание экземпляра/Импорт сборки")
         self.setFixedSize(300, 500)
 
         self.choose_mrpack_file_button = QtWidgets.QPushButton(self)
@@ -1115,7 +1151,7 @@ class ProfilesWindow(QtWidgets.QDialog):
         self.choose_mrpack_file_button.move(90, 90)
         self.choose_mrpack_file_button.setText("Выбрать файл")
         self.choose_mrpack_file_button.clicked.connect(
-            self._handle_open_mrpack_choosing_window
+            lambda: self._handle_open_mrpack_choosing_window(None)
         )
 
         self.mrpack_import_status = QtWidgets.QLabel(self)
@@ -1123,11 +1159,13 @@ class ProfilesWindow(QtWidgets.QDialog):
         self.mrpack_import_status.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self.mrpack_import_status.move(5, 450)
 
-        self.create_profile_button = QtWidgets.QPushButton(self)
-        self.create_profile_button.setFixedWidth(120)
-        self.create_profile_button.move(90, 120)
-        self.create_profile_button.setText("Создать профиль")
-        self.create_profile_button.clicked.connect(lambda: self.CreateOwnProfile(self))
+        self.create_instance_button = QtWidgets.QPushButton(self)
+        self.create_instance_button.setFixedWidth(120)
+        self.create_instance_button.move(90, 120)
+        self.create_instance_button.setText("Создать экземпляр")
+        self.create_instance_button.clicked.connect(
+            lambda: self.CreateOwnInstance(self)
+        )
 
         self.show()
 
@@ -1228,7 +1266,7 @@ class MainWindow(QtWidgets.QMainWindow):
         show_snapshots_position: str,
         show_releases_position: str,
         show_other_versions_position: str,
-        show_profiles_and_packs_position: str,
+        show_instances_and_packs_position: str,
         saved_minecraft_directory: str,
         allow_experiments: str,
         hover_color: str,
@@ -1249,7 +1287,7 @@ class MainWindow(QtWidgets.QMainWindow):
         self.show_snapshots_position = show_snapshots_position
         self.show_releases_position = show_releases_position
         self.show_other_versions_position = show_other_versions_position
-        self.show_profiles_and_packs_position = show_profiles_and_packs_position
+        self.show_instances_and_packs_position = show_instances_and_packs_position
         self.saved_minecraft_directory = saved_minecraft_directory
         self.allow_experiments = allow_experiments
         self.hover_color = hover_color
@@ -1281,7 +1319,7 @@ class MainWindow(QtWidgets.QMainWindow):
         show_snapshots: Union[bool, int],
         show_releases: Union[bool, int],
         other_versions: Union[bool, int],
-        profiles_and_packs: Union[bool, int],
+        instances_and_packs: Union[bool, int],
         current_version: str,
     ):
         versions_names_list = []
@@ -1305,16 +1343,16 @@ class MainWindow(QtWidgets.QMainWindow):
                         item["id"]
                     ):
                         versions_names_list.append(item["id"])
-            if profiles_and_packs:
+            if instances_and_packs:
                 for item in os.listdir(
-                    os.path.join(main_window.minecraft_directory, "profiles")
+                    os.path.join(main_window.minecraft_directory, "instances")
                 ):
                     if os.path.isfile(
                         os.path.join(
                             main_window.minecraft_directory,
-                            "profiles",
+                            "instances",
                             item,
-                            "profile_info.json",
+                            "instance_info.json",
                         )
                     ):
                         versions_names_list.append(item)
@@ -1342,7 +1380,7 @@ class MainWindow(QtWidgets.QMainWindow):
             "show_snapshots": int(self.show_snapshots),
             "show_releases": int(self.show_releases),
             "show_other_versions": int(self.show_other_versions),
-            "show_profiles_and_packs": int(self.show_profiles_and_packs),
+            "show_instances_and_packs": int(self.show_instances_and_packs),
             "minecraft_directory": self.minecraft_directory,
             "allow_experiments": int(self.allow_experiments),
             "hover_color": self.hover_color,
@@ -1361,7 +1399,7 @@ class MainWindow(QtWidgets.QMainWindow):
             os.path.isdir(
                 os.path.join(
                     self.minecraft_directory,
-                    "profiles",
+                    "instances",
                     self.versions_combobox.currentText(),
                 )
             )
@@ -1370,13 +1408,13 @@ class MainWindow(QtWidgets.QMainWindow):
             with open(
                 os.path.join(
                     self.minecraft_directory,
-                    "profiles",
+                    "instances",
                     self.versions_combobox.currentText(),
-                    "profile_info.json",
+                    "instance_info.json",
                 ),
                 encoding="utf-8",
-            ) as profile_info_file:
-                if "forge" in json.load(profile_info_file)[0]["mc_version"]:
+            ) as instance_info_file:
+                if "forge" in json.load(instance_info_file)["mc_version"]:
                     self.optifine_checkbox.setDisabled(False)
                 else:
                     self.optifine_checkbox.setDisabled(True)
@@ -1554,7 +1592,7 @@ class MainWindow(QtWidgets.QMainWindow):
         self.show_snapshots = int(self.show_snapshots_position)
         self.show_releases = int(self.show_releases_position)
         self.show_other_versions = int(self.show_other_versions_position)
-        self.show_profiles_and_packs = int(self.show_profiles_and_packs_position)
+        self.show_instances_and_packs = int(self.show_instances_and_packs_position)
 
         self.allow_experiments = int(self.allow_experiments)
         self.hover_color = self.hover_color
@@ -1568,7 +1606,7 @@ class MainWindow(QtWidgets.QMainWindow):
             if self.saved_minecraft_directory
             else minecraft_launcher_lib.utils.get_minecraft_directory()
         ).replace("/", "\\")
-        os.makedirs(os.path.join(self.minecraft_directory, "profiles"), exist_ok=True)
+        os.makedirs(os.path.join(self.minecraft_directory, "instances"), exist_ok=True)
 
         self.versions_combobox = QtWidgets.QComboBox(self)
         self.versions_combobox.move(20, 20)
@@ -1581,7 +1619,7 @@ class MainWindow(QtWidgets.QMainWindow):
             self.show_snapshots,
             self.show_releases,
             self.show_other_versions,
-            self.show_profiles_and_packs,
+            self.show_instances_and_packs,
             self.chosen_version,
         )
         self.versions_combobox.setFixedHeight(30)
@@ -1625,11 +1663,11 @@ class MainWindow(QtWidgets.QMainWindow):
             lambda: ProjectsSearch(self, self.minecraft_directory)
         )
 
-        self.create_profile_button = QtWidgets.QPushButton(self)
-        self.create_profile_button.setText("Создание/импорт профиля/сборки")
-        self.create_profile_button.setFixedWidth(220)
-        self.create_profile_button.move(40, 400)
-        self.create_profile_button.clicked.connect(lambda: ProfilesWindow(self))
+        self.create_instance_button = QtWidgets.QPushButton(self)
+        self.create_instance_button.setText("Создание экземпляра/Импорт сборки")
+        self.create_instance_button.setFixedWidth(220)
+        self.create_instance_button.move(40, 400)
+        self.create_instance_button.clicked.connect(lambda: InstancesWindow(self))
 
         self.progressbar = QtWidgets.QProgressBar(self, textVisible=False)
         self.progressbar.setFixedWidth(260)
@@ -1719,13 +1757,12 @@ class MainWindow(QtWidgets.QMainWindow):
 
 
 if __name__ == "__main__":
+    multiprocessing.freeze_support()
     open("FVLauncher.log", "w").close()
     logging.getLogger("requests").setLevel(logging.WARNING)
     logging.getLogger("urllib3").setLevel(logging.WARNING)
     logging.debug("Program started its work")
-    multiprocessing.freeze_support()
     config = load_config()
-    utils.Constants()
     logging.debug("Config loaded")
     main_window = MainWindow(
         config["version"],
@@ -1744,10 +1781,10 @@ if __name__ == "__main__":
         config["show_snapshots"],
         config["show_releases"],
         config["show_other_versions"],
-        config["show_profiles_and_packs"],
+        config["show_instances_and_packs"],
         config["minecraft_directory"],
         config["allow_experiments"],
         config["hover_color"],
     )
-    browser_profile = QtWebEngineCore.QWebEngineProfile("FVLauncher")
+    browser_instance = QtWebEngineCore.QWebEngineProfile("FVLauncher")
     sys.exit(utils.app.exec())
