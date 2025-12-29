@@ -9,7 +9,9 @@ import optipy
 import time
 import sys
 import traceback
-from typing import Dict, Union, Callable, Any, Optional, Tuple
+import random
+import string
+from typing import Dict, Union, Callable, Any, Optional, Tuple, Iterable
 from pypresence.presence import Presence
 from multiprocessing.queues import Queue
 from PySide6 import QtWidgets, QtGui
@@ -44,6 +46,21 @@ window_icon = QtGui.QIcon(
 
 def hide_security_data(data: str):
     return "[HIDDEN]" if data else "[NULL]"
+
+
+def generate_folder_name(
+    separator: str, random_symbols_len: int, strings: Iterable[str]
+):
+    return separator.join(
+        (
+            *strings,
+            "".join(
+                random.choices(
+                    string.ascii_letters + string.digits, k=random_symbols_len
+                )
+            ),
+        )
+    )
 
 
 def run_in_process_with_exceptions_logging(
@@ -87,7 +104,9 @@ def download_instance_from_mrpack(
         instance_path = os.path.join(
             minecraft_directory,
             "instances",
-            mrpack_info["name"],
+            generate_folder_name(
+                "_", 5, [mrpack_info["name"], mrpack_info["minecraftVersion"]]
+            ),
         )
         minecraft_launcher_lib.mrpack.install_mrpack(
             mrpack_path,

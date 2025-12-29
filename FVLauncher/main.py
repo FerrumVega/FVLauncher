@@ -350,10 +350,21 @@ class ProjectsSearch(QtWidgets.QDialog):
             def _update_ui_from_queue(self):
                 while not self.queue.empty():
                     var, value, *other_info = self.queue.get_nowait()
-                    if var == "progressbar":
-                        self.progressbar.setValue(value)
+                    if var == "show_versions":
+                        main_window.show_versions(
+                            main_window,
+                            main_window.show_old_alphas,
+                            main_window.show_old_betas,
+                            main_window.show_snapshots,
+                            main_window.show_releases,
+                            main_window.show_other_versions,
+                            main_window.show_instances_and_packs,
+                            main_window.versions_combobox.currentText(),
+                        )
                     elif var == "status":
                         self.mrpack_import_status.setText(value)
+                    elif var == "progressbar":
+                        self.progressbar.setValue(value)
                     elif var == "log_exception":
                         log_exception(*other_info)
                     elif var == "show_message":
@@ -370,9 +381,10 @@ class ProjectsSearch(QtWidgets.QDialog):
                                 InstancesWindow._handle_open_mrpack_choosing_window(
                                     self, other_info[2]
                                 )
-                            QtWidgets.QMessageBox.information(
-                                self, other_info[0], other_info[1]
-                            )
+                            else:
+                                QtWidgets.QMessageBox.information(
+                                    self, other_info[0], other_info[1]
+                                )
 
             def _make_ui(self):
                 self.setModal(True)
@@ -516,6 +528,10 @@ class ProjectsSearch(QtWidgets.QDialog):
                 self.versions_layout.addWidget(w)
 
             self.show()
+
+    def reject(self):
+        self.close()
+        return super().reject()
 
     def closeEvent(self, event: QtGui.QCloseEvent):
         for filename in os.listdir(self.minecraft_directory):
