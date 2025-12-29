@@ -130,6 +130,8 @@ class ProjectsSearch(QtWidgets.QDialog):
                         var, value, *other_info = self.queue.get_nowait()
                         if var == "progressbar":
                             self.progressbar.setValue(value)
+                        elif var == "status":
+                            self.download_info_label.setText(value)
                         elif var == "log_exception":
                             log_exception(*other_info)
                         elif var == "show_message":
@@ -211,6 +213,21 @@ class ProjectsSearch(QtWidgets.QDialog):
                                     != QtWidgets.QMessageBox.StandardButton.Yes
                                 ):
                                     return
+                            if (
+                                project["project_type"] == "mod"
+                                and loader not in instance_info["mc_version"]
+                                and (
+                                    QtWidgets.QMessageBox.warning(
+                                        self,
+                                        "Предупреждение",
+                                        f"Вероятнее всего, вы пытаетесь установить мод на неподходящий загрузчик модов.\nНазвание папки версии: {instance_info['mc_version']}\nВыбранный загрузчик модов: {loader}.\nВы уверены, что хотите установить мод на этот экземпляр?",
+                                        QtWidgets.QMessageBox.StandardButton.Yes
+                                        | QtWidgets.QMessageBox.StandardButton.No,
+                                    )
+                                    != QtWidgets.QMessageBox.StandardButton.Yes
+                                )
+                            ):
+                                return
 
                     type_to_dir = {
                         "mod": "mods",
@@ -285,6 +302,11 @@ class ProjectsSearch(QtWidgets.QDialog):
                     self.progressbar = QtWidgets.QProgressBar(self, textVisible=False)
                     self.progressbar.setFixedWidth(260)
                     self.progressbar.move(20, 430)
+
+                    self.download_info_label = QtWidgets.QLabel(self)
+                    self.download_info_label.setFixedWidth(290)
+                    self.download_info_label.move(5, 450)
+                    self.download_info_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
 
                     self.instances_container = QtWidgets.QWidget()
                     self.instances_layout = QtWidgets.QVBoxLayout(
@@ -392,7 +414,7 @@ class ProjectsSearch(QtWidgets.QDialog):
                 self.setFixedSize(300, 500)
 
                 with requests.get(
-                    f"https://api.modrinth.com/v2/project/{self.project['id']}/version",
+                    f"https://api.modrinth.com/v2/project/{self.project['project_id']}/version",
                     params={"game_versions": json.dumps([self.mc_version])},
                     timeout=10,
                 ) as r:
@@ -456,21 +478,17 @@ class ProjectsSearch(QtWidgets.QDialog):
                 self.show()
 
         def __init__(
-            self, parent: QtWidgets.QWidget, project_id: int, minecraft_directory: str
+            self, parent: QtWidgets.QWidget, project: Dict, minecraft_directory: str
         ):
             super().__init__(parent)
             self.minecraft_directory = minecraft_directory
+            self.project = project
             self.type_to_russian_name = {
                 "mod": "мод",
                 "resourcepack": "ресурспак",
                 "modpack": "сборка",
                 "shader": "шейдер",
             }
-            with requests.get(
-                f"https://api.modrinth.com/v2/project/{project_id}", timeout=10
-            ) as r:
-                r.raise_for_status()
-                self.project = json.loads(r.text)
             self._make_ui()
 
         def _make_ui(self):
@@ -517,7 +535,7 @@ class ProjectsSearch(QtWidgets.QDialog):
             self.scroll_area.setWidget(self.versions_container)
             self.scroll_area.setWidgetResizable(True)
 
-            mc_versions = self.project["game_versions"]
+            mc_versions = self.project["versions"]
             for mc_version in mc_versions[::-1]:
                 w = ClickableLabel(text=mc_version)
                 w.clicked.connect(
@@ -557,8 +575,8 @@ class ProjectsSearch(QtWidgets.QDialog):
         for project in info["hits"]:
             w = ClickableLabel(text=project["title"])
             w.clicked.connect(
-                lambda current_project_id=project["project_id"]: self.ProjectInfoWindow(
-                    self, current_project_id, self.minecraft_directory
+                lambda current_project=project: self.ProjectInfoWindow(
+                    self, current_project, self.minecraft_directory
                 )
             )
             self.p_layout.addWidget(w)
@@ -1110,6 +1128,8 @@ class InstancesWindow(QtWidgets.QDialog):
             var, value, *other_info = self.queue.get_nowait()
             if var == "status":
                 self.mrpack_import_status.setText(value)
+            elif var == "progressbar":
+                self.progressbar.setValue(value)
             elif var == "show_versions":
                 main_window.show_versions(
                     main_window,
@@ -1170,6 +1190,10 @@ class InstancesWindow(QtWidgets.QDialog):
             lambda: self._handle_open_mrpack_choosing_window(None)
         )
 
+        self.progressbar = QtWidgets.QProgressBar(self, textVisible=False)
+        self.progressbar.setFixedWidth(260)
+        self.progressbar.move(20, 430)
+
         self.mrpack_import_status = QtWidgets.QLabel(self)
         self.mrpack_import_status.setFixedWidth(290)
         self.mrpack_import_status.setAlignment(Qt.AlignmentFlag.AlignCenter)
@@ -1216,7 +1240,7 @@ class MainWindow(QtWidgets.QMainWindow):
                 "Java не найдена",
                 "На вашем компьютере отсутствует java, загрузите её с github лаунчера.",
             )
-            logging.error("Error message showed while checking java: java not found")
+            logging.error("Error message showed while java checking: java not found")
             return False
         else:
             return True
@@ -1749,9 +1773,9 @@ class MainWindow(QtWidgets.QMainWindow):
                     self,
                     "Новое обновление!",
                     "Вышло новое обновление лаунчера.<br>"
-                    "Нажмите ОК для обновления.<br>"
+                    "Нажмите Оk для обновления.<br>"
                     "После загрузки инсталлера, согласитесь на внесение изменений на устройстве.<br>"
-                    'Нажимая "OK", вы соглашаетесь с текстами лицензий, расположенных по адресам:<br>'
+                    'Нажимая "Ok", вы соглашаетесь с текстами лицензий, расположенных по адресам:<br>'
                     '<a href="https://raw.githubusercontent.com/FerrumVega/FVLauncher/refs/heads/main/LICENSE">https://raw.githubusercontent.com/FerrumVega/FVLauncher/refs/heads/main/LICENSE</a><br>'
                     '<a href="https://raw.githubusercontent.com/FerrumVega/FVLauncher/refs/heads/main/THIRD_PARTY_LICENSES">https://raw.githubusercontent.com/FerrumVega/FVLauncher/refs/heads/main/THIRD_PARTY_LICENSES</a>',
                     QtWidgets.QMessageBox.StandardButton.Ok

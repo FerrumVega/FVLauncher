@@ -28,7 +28,7 @@ class Constants:
     ELY_PROXY_URL = "https://fvlauncher.ferrumthevega.workers.dev"
     ELY_CLIENT_ID = "fvlauncherapp"
 
-    LAUNCHER_VERSION = "v7.4.1"
+    LAUNCHER_VERSION = "v7.5"
     USER_AGENT = "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:145.0) Gecko/20100101 Firefox/145.0"
 
 
@@ -42,6 +42,28 @@ window_icon = QtGui.QIcon(
         )
     )
 )
+
+
+def track_progress_factory(queue: Queue):
+    progress: int = 0
+    max_progress: int = 100
+
+    def track_progress(value: Union[str, int], progress_type: str):
+        nonlocal progress, max_progress
+        if progress_type != "progress_info":
+            if progress_type == "progress":
+                progress = value
+            elif progress_type == "max":
+                max_progress = value
+            try:
+                percents = min(100.0, progress / max_progress * 100)
+            except ZeroDivisionError:
+                percents = 0
+            queue.put(("progressbar", percents))
+        else:
+            queue.put(("status", value))
+
+    return track_progress
 
 
 def hide_security_data(data: str):
@@ -99,6 +121,8 @@ def download_instance_from_mrpack(
     no_internet_connection: bool,
     queue: Queue,
 ):
+    track_progress = track_progress_factory(queue)
+
     if mrpack_path:
         mrpack_info = minecraft_launcher_lib.mrpack.get_mrpack_information(mrpack_path)
         instance_path = os.path.join(
@@ -112,7 +136,11 @@ def download_instance_from_mrpack(
             mrpack_path,
             minecraft_directory,
             instance_path,
-            callback={"setStatus": lambda value: queue.put(("status", value))},
+            callback={
+                "setProgress": lambda value: track_progress(value, "progress"),
+                "setMax": lambda value: track_progress(value, "max"),
+                "setStatus": lambda value: track_progress(value, "progress_info"),
+            },
         )
         with open(
             os.path.join(instance_path, "instance_info.json"), "w", encoding="utf-8"
@@ -375,26 +403,7 @@ def install_version(
     queue: Queue,
     no_internet_connection: bool,
 ):
-    progress: int = 0
-    max_progress: int = 100
-    percents = 0
-    last_progress_info = ""
-
-    def track_progress(value: Union[str, int], progress_type: str):
-        nonlocal progress, max_progress, last_progress_info, percents
-        if progress_type != "progress_info" and isinstance(value, int):
-            if progress_type == "progress":
-                progress = value
-            elif progress_type == "max":
-                max_progress = value
-            try:
-                percents = min(100.0, progress / max_progress * 100)
-            except ZeroDivisionError:
-                percents = 0
-            queue.put(("progressbar", percents))
-        else:
-            last_progress_info = value
-            queue.put(("status", value))
+    track_progress = track_progress_factory(queue)
 
     name_of_folder_with_version, other_info = resolve_version_name(
         version, mod_loader, minecraft_directory, queue
@@ -689,6 +698,7 @@ def only_project_install(
                             min(100, int(bytes_downloaded / project_size * 100)),
                         )
                     )
+                    queue.put(("status", f"Загрузка {project['title']}"))
                     project_file.write(chunk)
     queue.put(
         (
