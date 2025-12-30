@@ -424,7 +424,14 @@ class ProjectsSearch(QtWidgets.QDialog):
                 for project_version in self.project_versions_info:
                     for loader in project_version["loaders"]:
                         if loader not in self.loaders_and_files:
-                            self.loaders_and_files[loader] = project_version["files"][0]
+                            for file in project_version["files"]:
+                                if file["primary"]:
+                                    self.loaders_and_files[loader] = file
+                                    break
+                            else:
+                                self.loaders_and_files[loader] = project_version[
+                                    "files"
+                                ][0]
 
                 self.loaders_container = QtWidgets.QWidget()
                 self.loaders_layout = QtWidgets.QVBoxLayout(self.loaders_container)
