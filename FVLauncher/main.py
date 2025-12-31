@@ -16,6 +16,7 @@ import traceback
 from minecraft_launcher_lib.exceptions import AccountNotOwnMinecraft
 import time
 import shutil
+import hashlib
 
 import utils
 import updater
@@ -1139,15 +1140,184 @@ class InstancesWindow(QtWidgets.QDialog):
             self.show()
 
     class ControlInstancesWindow(QtWidgets.QDialog):
+        class InstanceProjectsWindow(QtWidgets.QDialog):
+            def __init__(self, parent, instance_name: str):
+                super().__init__(parent)
+                self.instance_name = instance_name
+                self.projects_container = QtWidgets.QWidget()
+                self.projects_layout = QtWidgets.QVBoxLayout(self.projects_container)
+
+                self.scroll_area = QtWidgets.QScrollArea(self)
+                self.scroll_area.setFixedSize(700, 500)
+                self.scroll_area.setWidget(self.projects_container)
+                self.scroll_area.setWidgetResizable(True)
+                self._make_ui()
+
+            def delete_project(
+                self, project_name: str, project_type: str, project_hash: str
+            ):
+                try:
+                    type_to_dir = {
+                        "mod": "mods",
+                        "resourcepack": "resourcepacks",
+                        "shader": "shaderpacks",
+                    }
+                    if (
+                        QtWidgets.QMessageBox.information(
+                            self,
+                            "Удаление экземпляра",
+                            f"Вы уверены, что хотите удалить проект {project_name}?",
+                            QtWidgets.QMessageBox.StandardButton.Yes
+                            | QtWidgets.QMessageBox.StandardButton.No,
+                        )
+                        == QtWidgets.QMessageBox.StandardButton.Yes
+                    ):
+                        base_path = os.path.join(
+                            self.instance_path,
+                            type_to_dir[project_type],
+                        )
+                        for project_file_name in os.listdir(base_path):
+                            full_project_path = os.path.join(
+                                base_path,
+                                project_file_name,
+                            )
+                            if (
+                                hashlib.sha512(
+                                    open(full_project_path, "rb").read()
+                                ).hexdigest()
+                                == project_hash
+                            ):
+                                os.remove(full_project_path)
+                                QtWidgets.QMessageBox.information(
+                                    self,
+                                    "Успешно!",
+                                    f"Прокет {project_name} был успешно удалён.",
+                                )
+                                break
+                        else:
+                            if project_type == "mod":
+                                base_path = os.path.join(
+                                    self.instance_path,
+                                    "datapacks",
+                                )
+                                for project_file_name in os.listdir(base_path):
+                                    full_project_path = os.path.join(
+                                        base_path, project_file_name
+                                    )
+                                    if (
+                                        hashlib.sha512(
+                                            open(full_project_path, "rb").read()
+                                        ).hexdigest()
+                                        == project_hash
+                                    ):
+                                        os.remove(full_project_path)
+                                        QtWidgets.QMessageBox.information(
+                                            self,
+                                            "Успешно!",
+                                            f"Прокет {project_name} был успешно удалён.",
+                                        )
+                        self._make_ui()
+                except FileNotFoundError:
+                    pass
+
+            def _make_ui(self):
+                self.setModal(True)
+                self.setWindowTitle("Управление экземплярами")
+                self.setFixedSize(700, 500)
+
+                while self.projects_layout.count():
+                    widget = self.projects_layout.takeAt(0).widget()
+                    if widget is not None:
+                        widget.deleteLater()
+
+                hashes = []
+                self.instance_path = os.path.join(
+                    main_window.minecraft_directory, "instances", self.instance_name
+                )
+                for project_type_folder in [
+                    "mods",
+                    "resourcepacks",
+                    "datapacks",
+                    "shaderpacks",
+                ]:
+                    try:
+                        for filename in os.listdir(
+                            os.path.join(self.instance_path, project_type_folder)
+                        ):
+                            path = os.path.join(
+                                self.instance_path, project_type_folder, filename
+                            )
+                            hashes.append(
+                                hashlib.sha512(open(path, "rb").read()).hexdigest()
+                            )
+                    except FileNotFoundError:
+                        pass
+                with requests.post(
+                    "https://api.modrinth.com/v2/version_files",
+                    json={
+                        "hashes": hashes,
+                        "algorithm": "sha512",
+                    },
+                ) as r:
+                    r.raise_for_status()
+                    ids_and_hashes = {}
+                    for project_hash, project_info in r.json().items():
+                        ids_and_hashes[project_info["project_id"]] = project_hash
+                with requests.get(
+                    "https://api.modrinth.com/v2/projects",
+                    params={"ids": json.dumps(list(ids_and_hashes.keys()))},
+                ) as r:
+                    r.raise_for_status()
+                    for project_info in r.json():
+                        project_name = project_info["title"]
+                        project_type = project_info["project_type"]
+                        project_hash = ids_and_hashes[project_info["id"]]
+                        print(project_name)
+
+                        container = QtWidgets.QWidget()
+                        h_layout = QtWidgets.QHBoxLayout(container)
+                        h_layout.setSpacing(5)
+
+                        self.icon_url = project_info.get("icon_url")
+
+                        if self.icon_url:
+                            self.icon = QtGui.QPixmap()
+                            with requests.get(self.icon_url, timeout=10) as r:
+                                r.raise_for_status()
+                                self.icon.loadFromData(r.content)
+                            self.icon = self.icon.scaled(50, 50)
+                            self.project_icon = QtWidgets.QLabel(self)
+                            self.project_icon.setPixmap(self.icon)
+
+                        project_name_label = QtWidgets.QLabel(
+                            container, text=project_info.get("title")
+                        )
+                        delete_label = ClickableLabel(container, text="Удалить")
+                        delete_label.clicked.connect(
+                            lambda cur_project_name=project_name,
+                            cur_project_type=project_type,
+                            cur_hash=project_hash: self.delete_project(
+                                cur_project_name, cur_project_type, cur_hash
+                            )
+                        )
+                        h_layout.addWidget(self.project_icon)
+                        h_layout.addWidget(project_name_label)
+                        h_layout.addStretch()
+                        h_layout.addWidget(delete_label)
+
+                        self.projects_layout.addWidget(container)
+
+                self.show()
+
         def __init__(self, parent: QtWidgets.QWidget):
             super().__init__(parent)
 
-            self.versions_container = QtWidgets.QWidget()
-            self.versions_layout = QtWidgets.QVBoxLayout(self.versions_container)
+            self.instances_container = QtWidgets.QWidget()
+            self.instances_layout = QtWidgets.QVBoxLayout(self.instances_container)
 
             self.scroll_area = QtWidgets.QScrollArea(self)
-            self.scroll_area.setFixedSize(300, 500)
-            self.scroll_area.setWidget(self.versions_container)
+            self.scroll_area.setFixedSize(700, 500)
+            self.scroll_area.setWidget(self.instances_container)
             self.scroll_area.setWidgetResizable(True)
 
             self._make_ui()
@@ -1219,29 +1389,34 @@ class InstancesWindow(QtWidgets.QDialog):
         def _make_ui(self):
             self.setModal(True)
             self.setWindowTitle("Управление экземплярами")
-            self.setFixedSize(300, 500)
+            self.setFixedSize(700, 500)
 
-            while self.versions_layout.count():
-                widget = self.versions_layout.takeAt(0).widget()
+            while self.instances_layout.count():
+                widget = self.instances_layout.takeAt(0).widget()
                 if widget is not None:
                     widget.deleteLater()
 
             for instance_name in os.listdir(
                 os.path.join(main_window.minecraft_directory, "instances")
             ):
-                if os.path.isfile(
-                    os.path.join(
-                        main_window.minecraft_directory,
-                        "instances",
-                        instance_name,
-                        "instance_info.json",
-                    )
-                ):
+                instance_info_path = os.path.join(
+                    main_window.minecraft_directory,
+                    "instances",
+                    instance_name,
+                    "instance_info.json",
+                )
+                if os.path.isfile(instance_info_path):
+                    with open(
+                        instance_info_path, encoding="utf-8"
+                    ) as instance_info_json:
+                        mc_version = json.load(instance_info_json)["mc_version"]
                     container = QtWidgets.QWidget()
                     h_layout = QtWidgets.QHBoxLayout(container)
                     h_layout.setSpacing(5)
 
-                    main_label = QtWidgets.QLabel(container, text=instance_name)
+                    main_label = QtWidgets.QLabel(
+                        container, text=f"{instance_name} ({mc_version})"
+                    )
                     change_version_label = ClickableLabel(
                         container, text="Изменить версию"
                     )
@@ -1262,14 +1437,23 @@ class InstancesWindow(QtWidgets.QDialog):
                             cur_instance_name
                         )
                     )
+                    projects_label = ClickableLabel(
+                        container, text="Управление проектами"
+                    )
+                    projects_label.clicked.connect(
+                        lambda cur_instance_name=instance_name: self.InstanceProjectsWindow(
+                            self, cur_instance_name
+                        )
+                    )
 
                     h_layout.addWidget(main_label)
                     h_layout.addStretch()
                     h_layout.addWidget(change_version_label)
                     h_layout.addWidget(rename_label)
                     h_layout.addWidget(delete_label)
+                    h_layout.addWidget(projects_label)
 
-                    self.versions_layout.addWidget(container)
+                    self.instances_layout.addWidget(container)
 
             self.show()
 
