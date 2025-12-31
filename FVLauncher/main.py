@@ -43,48 +43,130 @@ sys.excepthook = lambda exception_type, exception, exception_traceback: log_exce
 
 def load_config():
     default_config = {
-        "version": "1.16.5",
-        "mod_loader": "forge",
-        "nickname": "Player",
-        "java_arguments": "",
-        "optifine": "1",
-        "access_token": "",
-        "token_expires_at": "0",
-        "game_uuid": "",
-        "refresh_token": "",
-        "launch_account_type": "Ely.by",
-        "show_console": "0",
-        "show_old_alphas": "0",
-        "show_old_betas": "0",
-        "show_snapshots": "0",
-        "show_releases": "1",
-        "show_other_versions": "1",
-        "show_instances_and_packs": "1",
-        "minecraft_directory": "",
-        "allow_experiments": "0",
-        "hover_color": "",
+        "Account": {
+            "access_token": "",
+            "token_expires_at": "0",
+            "game_uuid": "",
+            "refresh_token": "",
+            "launch_account_type": "Ely.by",
+        },
+        "Preset": {
+            "version": "1.21.10",
+            "mod_loader": "fabric",
+            "nickname": "Player",
+            "optifine": "0",
+        },
+        "Settings": {
+            "java_arguments": "-XX:+UseZGC -XX:+ZGenerational",
+            "show_console": "0",
+            "show_old_alphas": "0",
+            "show_old_betas": "0",
+            "show_snapshots": "0",
+            "show_releases": "1",
+            "show_other_versions": "1",
+            "show_instances_and_packs": "1",
+            "minecraft_directory": "",
+        },
+        "Experiments": {
+            "allow_experiments": "0",
+            "hover_color": "",
+        },
     }
 
     config_path = "FVLauncher.ini"
     parser = configparser.ConfigParser()
-
     if not os.path.isfile(config_path):
-        parser.add_section("Settings")
-        parser["Settings"] = default_config
+        for section, config_part in default_config.items():
+            parser.add_section(section)
+            parser[section] = config_part
         with open(config_path, "w", encoding="utf-8") as config_file:
             parser.write(config_file)
     else:
         updated = False
         parser.read(config_path, encoding="utf-8")
-        for key, value in default_config.items():
-            if key not in parser["Settings"]:
-                parser["Settings"][key] = value
-                updated = True
+        for section, config_part in default_config.items():
+            if not parser.has_section(section):
+                parser.add_section(section)
+            for key, value in config_part.items():
+                if key not in parser[section]:
+                    parser[section][key] = value
+                    updated = True
         if updated:
             with open(config_path, "w", encoding="utf-8") as config_file:
                 parser.write(config_file)
 
-    return {key: parser["Settings"][key] for key in parser.options("Settings")}
+    return {section: dict(parser[section]) for section in parser.sections()}
+
+
+def update_ui_from_queue(self):
+    while not self.queue.empty():
+        var, value, *other_info = self.queue.get_nowait()
+        match var:
+            case "show_versions":
+                main_window.show_versions(
+                    main_window,
+                    main_window.show_old_alphas,
+                    main_window.show_old_betas,
+                    main_window.show_snapshots,
+                    main_window.show_releases,
+                    main_window.show_other_versions,
+                    main_window.show_instances_and_packs,
+                    main_window.versions_combobox.currentText(),
+                )
+            case "status":
+                self.download_info_label.setText(value)
+            case "progressbar":
+                self.progressbar.setValue(value)
+            case "log_exception":
+                log_exception(*other_info)
+                try:
+                    self._after_stop_download_process()
+                except AttributeError:
+                    pass
+            case "show_message":
+                match value:
+                    case "critical":
+                        QtWidgets.QMessageBox.critical(
+                            self, other_info[1], other_info[2]
+                        )
+                    case "warning":
+                        QtWidgets.QMessageBox.warning(
+                            self, other_info[1], other_info[2]
+                        )
+                    case "information":
+                        match other_info:
+                            case [title, message, project_file_path]:  # noqa: F841
+                                InstancesWindow._handle_open_mrpack_choosing_window(
+                                    self, project_file_path
+                                )
+                            case _:
+                                QtWidgets.QMessageBox.information(
+                                    self, other_info[0], other_info[1]
+                                )
+                    case "log":
+                        if (
+                            QtWidgets.QMessageBox.critical(
+                                self,
+                                other_info[0],
+                                other_info[1],
+                                QtWidgets.QMessageBox.StandardButton.Yes
+                                | QtWidgets.QMessageBox.StandardButton.No,
+                            )
+                            == QtWidgets.QMessageBox.StandardButton.Yes
+                        ):
+                            self.ShowLogWindow(self, other_info[2])
+            case "start_button":
+                if value:
+                    self._after_stop_download_process()
+                else:
+                    self.start_button_type = "Stop"
+                    self.start_button.setText("Отмена")
+            case "start_rich_presence":
+                match value:
+                    case "minecraft_opened":
+                        utils.start_rich_presence(self.rpc, *other_info)
+                    case "minecraft_closed":
+                        utils.start_rich_presence(self.rpc)
 
 
 class ClickableLabel(QtWidgets.QLabel):
@@ -124,29 +206,6 @@ class ProjectsSearch(QtWidgets.QDialog):
                     self.minecraft_directory = minecraft_directory
                     self.loaders_and_files = loaders_and_files
                     self._make_ui()
-
-                def _update_ui_from_queue(self):
-                    while not self.queue.empty():
-                        var, value, *other_info = self.queue.get_nowait()
-                        if var == "progressbar":
-                            self.progressbar.setValue(value)
-                        elif var == "status":
-                            self.download_info_label.setText(value)
-                        elif var == "log_exception":
-                            log_exception(*other_info)
-                        elif var == "show_message":
-                            if value == "critical":
-                                QtWidgets.QMessageBox.critical(
-                                    self, other_info[1], other_info[2]
-                                )
-                            elif value == "warning":
-                                QtWidgets.QMessageBox.warning(
-                                    self, other_info[1], other_info[2]
-                                )
-                            elif value == "information":
-                                QtWidgets.QMessageBox.information(
-                                    self, other_info[0], other_info[1]
-                                )
 
                 def reject(self):
                     self.close()
@@ -278,7 +337,7 @@ class ProjectsSearch(QtWidgets.QDialog):
                     )
                     self.download_project_file_process.start()
                     self.timer = QTimer()
-                    self.timer.timeout.connect(self._update_ui_from_queue)
+                    self.timer.timeout.connect(lambda: update_ui_from_queue(self))
                     self.timer.start(200)
 
                 def _make_ui(self):
@@ -369,45 +428,6 @@ class ProjectsSearch(QtWidgets.QDialog):
                     self.download_project_file_process.terminate()
                 return super().closeEvent(event)
 
-            def _update_ui_from_queue(self):
-                while not self.queue.empty():
-                    var, value, *other_info = self.queue.get_nowait()
-                    if var == "show_versions":
-                        main_window.show_versions(
-                            main_window,
-                            main_window.show_old_alphas,
-                            main_window.show_old_betas,
-                            main_window.show_snapshots,
-                            main_window.show_releases,
-                            main_window.show_other_versions,
-                            main_window.show_instances_and_packs,
-                            main_window.versions_combobox.currentText(),
-                        )
-                    elif var == "status":
-                        self.mrpack_import_status.setText(value)
-                    elif var == "progressbar":
-                        self.progressbar.setValue(value)
-                    elif var == "log_exception":
-                        log_exception(*other_info)
-                    elif var == "show_message":
-                        if value == "critical":
-                            QtWidgets.QMessageBox.critical(
-                                self, other_info[1], other_info[2]
-                            )
-                        elif value == "warning":
-                            QtWidgets.QMessageBox.warning(
-                                self, other_info[1], other_info[2]
-                            )
-                        elif value == "information":
-                            if len(other_info) > 2 and other_info[2]:
-                                InstancesWindow._handle_open_mrpack_choosing_window(
-                                    self, other_info[2]
-                                )
-                            else:
-                                QtWidgets.QMessageBox.information(
-                                    self, other_info[0], other_info[1]
-                                )
-
             def _make_ui(self):
                 self.setModal(True)
                 self.setWindowTitle(f"Загрузка {self.project['title']}")
@@ -446,10 +466,10 @@ class ProjectsSearch(QtWidgets.QDialog):
                     self.progressbar.setFixedWidth(260)
                     self.progressbar.move(20, 430)
 
-                    self.mrpack_import_status = QtWidgets.QLabel(self)
-                    self.mrpack_import_status.setFixedWidth(290)
-                    self.mrpack_import_status.setAlignment(Qt.AlignmentFlag.AlignCenter)
-                    self.mrpack_import_status.move(5, 450)
+                    self.download_info_label = QtWidgets.QLabel(self)
+                    self.download_info_label.setFixedWidth(290)
+                    self.download_info_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+                    self.download_info_label.move(5, 450)
 
                 for loader in self.loaders_and_files:
                     download_button = ClickableLabel(self)
@@ -1085,8 +1105,8 @@ class InstancesWindow(QtWidgets.QDialog):
             self.random_instance_name_button.move(260, 20)
             self.random_instance_name_button.clicked.connect(
                 lambda: self.instance_name_entry.setText(
-                    Faker().word(part_of_speech="adjective").capitalize()
-                    + Faker().word(part_of_speech="noun").capitalize()
+                    faker.word(part_of_speech="adjective").capitalize()
+                    + faker.word(part_of_speech="noun").capitalize()
                 )
             )
 
@@ -1130,36 +1150,6 @@ class InstancesWindow(QtWidgets.QDialog):
         self.close()
         return super().reject()
 
-    def _update_ui_from_queue(self):
-        while not self.queue.empty():
-            var, value, *other_info = self.queue.get_nowait()
-            if var == "status":
-                self.mrpack_import_status.setText(value)
-            elif var == "progressbar":
-                self.progressbar.setValue(value)
-            elif var == "show_versions":
-                main_window.show_versions(
-                    main_window,
-                    main_window.show_old_alphas,
-                    main_window.show_old_betas,
-                    main_window.show_snapshots,
-                    main_window.show_releases,
-                    main_window.show_other_versions,
-                    main_window.show_instances_and_packs,
-                    main_window.versions_combobox.currentText(),
-                )
-            elif var == "log_exception":
-                log_exception(*other_info)
-            elif var == "show_message":
-                if value == "critical":
-                    QtWidgets.QMessageBox.critical(self, other_info[0], other_info[1])
-                elif value == "warning":
-                    QtWidgets.QMessageBox.warning(self, other_info[0], other_info[1])
-                elif value == "information":
-                    QtWidgets.QMessageBox.information(
-                        self, other_info[0], other_info[1]
-                    )
-
     def _handle_open_mrpack_choosing_window(self, mrpack_path):
         if mrpack_path is None:
             mrpack_path = QtWidgets.QFileDialog.getOpenFileName(
@@ -1181,7 +1171,7 @@ class InstancesWindow(QtWidgets.QDialog):
             )
             self.import_mrpack_process.start()
             self.timer = QTimer()
-            self.timer.timeout.connect(self._update_ui_from_queue)
+            self.timer.timeout.connect(lambda: update_ui_from_queue(self))
             self.timer.start(200)
 
     def _make_ui(self):
@@ -1201,10 +1191,10 @@ class InstancesWindow(QtWidgets.QDialog):
         self.progressbar.setFixedWidth(260)
         self.progressbar.move(20, 430)
 
-        self.mrpack_import_status = QtWidgets.QLabel(self)
-        self.mrpack_import_status.setFixedWidth(290)
-        self.mrpack_import_status.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        self.mrpack_import_status.move(5, 450)
+        self.download_info_label = QtWidgets.QLabel(self)
+        self.download_info_label.setFixedWidth(290)
+        self.download_info_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self.download_info_label.move(5, 450)
 
         self.create_instance_button = QtWidgets.QPushButton(self)
         self.create_instance_button.setFixedWidth(120)
@@ -1251,49 +1241,6 @@ class MainWindow(QtWidgets.QMainWindow):
             return False
         else:
             return True
-
-    def _update_ui_from_queue(self):
-        while not self.queue.empty():
-            var, value, *other_info = self.queue.get_nowait()
-            if var == "progressbar":
-                self.progressbar.setValue(value)
-            elif var == "status":
-                self.download_info_label.setText(value)
-            elif var == "start_button":
-                if value:
-                    self._after_stop_download_process()
-                else:
-                    self.start_button_type = "Stop"
-                    self.start_button.setText("Отмена")
-            elif var == "start_rich_presence":
-                if value == "minecraft_opened":
-                    utils.start_rich_presence(self.rpc, *other_info)
-                elif value == "minecraft_closed":
-                    utils.start_rich_presence(self.rpc)
-            elif var == "log_exception":
-                log_exception(*other_info)
-                self._after_stop_download_process()
-            elif var == "show_message":
-                if value == "critical":
-                    QtWidgets.QMessageBox.critical(self, other_info[0], other_info[1])
-                elif value == "warning":
-                    QtWidgets.QMessageBox.warning(self, other_info[0], other_info[1])
-                elif value == "information":
-                    QtWidgets.QMessageBox.information(
-                        self, other_info[0], other_info[1]
-                    )
-                elif value == "log":
-                    if (
-                        QtWidgets.QMessageBox.critical(
-                            self,
-                            other_info[0],
-                            other_info[1],
-                            QtWidgets.QMessageBox.StandardButton.Yes
-                            | QtWidgets.QMessageBox.StandardButton.No,
-                        )
-                        == QtWidgets.QMessageBox.StandardButton.Yes
-                    ):
-                        self.ShowLogWindow(self, other_info[2])
 
     def __init__(
         self,
@@ -1410,44 +1357,54 @@ class MainWindow(QtWidgets.QMainWindow):
             pass
 
     def save_config(self):
-        settings = {
-            "version": self.raw_version,
-            "mod_loader": self.mod_loader,
-            "nickname": self.nickname,
-            "java_arguments": self.java_arguments,
-            "optifine": int(self.optifine),
-            "access_token": self.access_token,
-            "token_expires_at": self.token_expires_at,
-            "game_uuid": self.game_uuid,
-            "refresh_token": self.refresh_token,
-            "launch_account_type": self.launch_account_type,
-            "show_console": int(self.show_console),
-            "show_old_alphas": int(self.show_old_alphas),
-            "show_old_betas": int(self.show_old_betas),
-            "show_snapshots": int(self.show_snapshots),
-            "show_releases": int(self.show_releases),
-            "show_other_versions": int(self.show_other_versions),
-            "show_instances_and_packs": int(self.show_instances_and_packs),
-            "minecraft_directory": self.minecraft_directory,
-            "allow_experiments": int(self.allow_experiments),
-            "hover_color": self.hover_color,
+        config = {
+            "Account": {
+                "access_token": self.access_token,
+                "token_expires_at": self.token_expires_at,
+                "game_uuid": self.game_uuid,
+                "refresh_token": self.refresh_token,
+                "launch_account_type": self.launch_account_type,
+            },
+            "Preset": {
+                "version": self.raw_version,
+                "mod_loader": self.mod_loader,
+                "nickname": self.nickname,
+                "optifine": int(self.optifine),
+            },
+            "Settings": {
+                "java_arguments": self.java_arguments,
+                "show_console": int(self.show_console),
+                "show_old_alphas": int(self.show_old_alphas),
+                "show_old_betas": int(self.show_old_betas),
+                "show_snapshots": int(self.show_snapshots),
+                "show_releases": int(self.show_releases),
+                "show_other_versions": int(self.show_other_versions),
+                "show_instances_and_packs": int(self.show_instances_and_packs),
+                "minecraft_directory": self.minecraft_directory,
+            },
+            "Experiments": {
+                "allow_experiments": int(self.allow_experiments),
+                "hover_color": self.hover_color,
+            },
         }
+
         config_path = "FVLauncher.ini"
         parser = configparser.ConfigParser()
-
-        parser.add_section("Settings")
-        parser["Settings"] = settings
+        for section, config_part in config.items():
+            parser.add_section(section)
+            parser[section] = config_part
 
         with open(config_path, "w", encoding="utf-8") as config_file:
             parser.write(config_file)
 
     def block_optifine_checkbox(self, *args: Any):
         if (
-            os.path.isdir(
+            os.path.isfile(
                 os.path.join(
                     self.minecraft_directory,
                     "instances",
                     self.versions_combobox.currentText(),
+                    "instance_info.json",
                 )
             )
             and self.versions_combobox.currentText()
@@ -1461,7 +1418,8 @@ class MainWindow(QtWidgets.QMainWindow):
                 ),
                 encoding="utf-8",
             ) as instance_info_file:
-                if "forge" in json.load(instance_info_file)["mc_version"]:
+                mc_version = json.load(instance_info_file)["mc_version"]
+                if "forge" in mc_version and "neoforge" not in mc_version:
                     self.optifine_checkbox.setDisabled(False)
                 else:
                     self.optifine_checkbox.setDisabled(True)
@@ -1505,7 +1463,7 @@ class MainWindow(QtWidgets.QMainWindow):
             )
             self.minecraft_download_process.start()
             self.timer = QTimer()
-            self.timer.timeout.connect(self._update_ui_from_queue)
+            self.timer.timeout.connect(lambda: update_ui_from_queue(self))
             self.timer.start(200)
             self.start_button_type = "Stop"
             self.start_button.setText("Отмена")
@@ -1811,27 +1769,28 @@ if __name__ == "__main__":
     logging.debug("Program started its work")
     config = load_config()
     logging.debug("Config loaded")
+    faker = Faker()
     main_window = MainWindow(
-        config["version"],
-        config["mod_loader"],
-        config["nickname"],
-        config["java_arguments"],
-        config["optifine"],
-        config["access_token"],
-        config["token_expires_at"],
-        config["game_uuid"],
-        config["refresh_token"],
-        config["launch_account_type"],
-        config["show_console"],
-        config["show_old_alphas"],
-        config["show_old_betas"],
-        config["show_snapshots"],
-        config["show_releases"],
-        config["show_other_versions"],
-        config["show_instances_and_packs"],
-        config["minecraft_directory"],
-        config["allow_experiments"],
-        config["hover_color"],
+        config["Preset"]["version"],
+        config["Preset"]["mod_loader"],
+        config["Preset"]["nickname"],
+        config["Settings"]["java_arguments"],
+        config["Preset"]["optifine"],
+        config["Account"]["access_token"],
+        config["Account"]["token_expires_at"],
+        config["Account"]["game_uuid"],
+        config["Account"]["refresh_token"],
+        config["Account"]["launch_account_type"],
+        config["Settings"]["show_console"],
+        config["Settings"]["show_old_alphas"],
+        config["Settings"]["show_old_betas"],
+        config["Settings"]["show_snapshots"],
+        config["Settings"]["show_releases"],
+        config["Settings"]["show_other_versions"],
+        config["Settings"]["show_instances_and_packs"],
+        config["Settings"]["minecraft_directory"],
+        config["Experiments"]["allow_experiments"],
+        config["Experiments"]["hover_color"],
     )
     browser_instance = QtWebEngineCore.QWebEngineProfile("FVLauncher")
     sys.exit(utils.app.exec())

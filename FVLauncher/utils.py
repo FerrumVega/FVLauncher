@@ -11,6 +11,7 @@ import sys
 import traceback
 import random
 import string
+from faker import Faker
 from typing import Dict, Union, Callable, Any, Optional, Tuple, Iterable
 from pypresence.presence import Presence
 from multiprocessing.queues import Queue
@@ -29,7 +30,7 @@ class Constants:
     ELY_CLIENT_ID = "fvlauncherapp"
 
     LAUNCHER_VERSION = "v7.5.1"
-    USER_AGENT = "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:145.0) Gecko/20100101 Firefox/145.0"
+    USER_AGENT = Faker().user_agent()
 
 
 app = QtWidgets.QApplication(sys.argv)
@@ -700,15 +701,15 @@ def only_project_install(
                     )
                     queue.put(("status", f"Загрузка {project['title']}"))
                     project_file.write(chunk)
-    queue.put(
-        (
-            "show_message",
-            "information",
-            "Проект установлен",
-            f"Проект {project['title']} был успешно установлен.",
-            project_file_path,
-        )
-    )
+    queue_info = [
+        "show_message",
+        "information",
+        "Проект установлен",
+        f"Проект {project['title']} был успешно установлен.",
+    ]
+    if project["project_type"] == "modpack":
+        queue_info.append(project_file_path)
+    queue.put(queue_info)
     logging.info(f"Project {project['title']} installed")
 
 
