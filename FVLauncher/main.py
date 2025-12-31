@@ -15,6 +15,7 @@ from typing import Dict, Union, Any, Optional
 import traceback
 from minecraft_launcher_lib.exceptions import AccountNotOwnMinecraft
 import time
+import shutil
 
 import utils
 import updater
@@ -1137,6 +1138,141 @@ class InstancesWindow(QtWidgets.QDialog):
 
             self.show()
 
+    class ControlInstancesWindow(QtWidgets.QDialog):
+        def __init__(self, parent: QtWidgets.QWidget):
+            super().__init__(parent)
+
+            self.versions_container = QtWidgets.QWidget()
+            self.versions_layout = QtWidgets.QVBoxLayout(self.versions_container)
+
+            self.scroll_area = QtWidgets.QScrollArea(self)
+            self.scroll_area.setFixedSize(300, 500)
+            self.scroll_area.setWidget(self.versions_container)
+            self.scroll_area.setWidgetResizable(True)
+
+            self._make_ui()
+
+        def change_instance_mc_version(self, instance_name: str):
+            mc_version = os.path.basename(
+                QtWidgets.QFileDialog.getExistingDirectory(
+                    self,
+                    "Выбор папки версии",
+                    os.path.join(main_window.minecraft_directory, "versions"),
+                ).replace("/", "\\")
+            )
+            if mc_version:
+                with open(
+                    os.path.join(
+                        main_window.minecraft_directory,
+                        "instances",
+                        instance_name,
+                        "instance_info.json",
+                    ),
+                    "w",
+                    encoding="utf-8",
+                ) as instance_info_json:
+                    json.dump({"mc_version": mc_version}, instance_info_json)
+                    QtWidgets.QMessageBox.information(
+                        self,
+                        "Успешно!",
+                        f"Версия экземпляра успешно изменена на {mc_version}",
+                    )
+
+        def rename_instance(self, instance_name: str):
+            new_name, ok = QtWidgets.QInputDialog.getText(
+                self, "Переименование экземпляра", "Введите новое имя экземпляра"
+            )
+            if ok:
+                base_path = os.path.join(main_window.minecraft_directory, "instances")
+                os.rename(
+                    os.path.join(base_path, instance_name),
+                    os.path.join(base_path, new_name),
+                )
+                QtWidgets.QMessageBox.information(
+                    self,
+                    "Успешно!",
+                    f"Экземпляр {instance_name} был успешно переименован в {new_name}.",
+                )
+                self._make_ui()
+
+        def delete_instance(self, instance_name: str):
+            if (
+                QtWidgets.QMessageBox.information(
+                    self,
+                    "Удаление экземпляра",
+                    f"Вы уверены, что хотите удалить экземпляр {instance_name}?",
+                    QtWidgets.QMessageBox.StandardButton.Yes
+                    | QtWidgets.QMessageBox.StandardButton.No,
+                )
+                == QtWidgets.QMessageBox.StandardButton.Yes
+            ):
+                shutil.rmtree(
+                    os.path.join(
+                        main_window.minecraft_directory, "instances", instance_name
+                    )
+                )
+                QtWidgets.QMessageBox.information(
+                    self, "Успешно!", f"Экземпляр {instance_name} был успешно удалён."
+                )
+                self._make_ui()
+
+        def _make_ui(self):
+            self.setModal(True)
+            self.setWindowTitle("Управление экземплярами")
+            self.setFixedSize(300, 500)
+
+            while self.versions_layout.count():
+                widget = self.versions_layout.takeAt(0).widget()
+                if widget is not None:
+                    widget.deleteLater()
+
+            for instance_name in os.listdir(
+                os.path.join(main_window.minecraft_directory, "instances")
+            ):
+                if os.path.isfile(
+                    os.path.join(
+                        main_window.minecraft_directory,
+                        "instances",
+                        instance_name,
+                        "instance_info.json",
+                    )
+                ):
+                    container = QtWidgets.QWidget()
+                    h_layout = QtWidgets.QHBoxLayout(container)
+                    h_layout.setSpacing(5)
+
+                    main_label = QtWidgets.QLabel(container, text=instance_name)
+                    change_version_label = ClickableLabel(
+                        container, text="Изменить версию"
+                    )
+                    change_version_label.clicked.connect(
+                        lambda cur_instance_name=instance_name: self.change_instance_mc_version(
+                            cur_instance_name
+                        )
+                    )
+                    rename_label = ClickableLabel(container, text="Переименовать")
+                    rename_label.clicked.connect(
+                        lambda cur_instance_name=instance_name: self.rename_instance(
+                            cur_instance_name
+                        )
+                    )
+                    delete_label = ClickableLabel(container, text="Удалить")
+                    delete_label.clicked.connect(
+                        lambda cur_instance_name=instance_name: self.delete_instance(
+                            cur_instance_name
+                        )
+                    )
+
+                    h_layout.addWidget(main_label)
+                    h_layout.addStretch()
+                    h_layout.addWidget(change_version_label)
+                    h_layout.addWidget(rename_label)
+                    h_layout.addWidget(delete_label)
+
+                    self.versions_layout.addWidget(container)
+
+            self.show()
+
     def __init__(self, main_window: QtWidgets.QWidget):
         super().__init__(main_window)
         self._make_ui()
@@ -1176,13 +1312,13 @@ class InstancesWindow(QtWidgets.QDialog):
 
     def _make_ui(self):
         self.setModal(True)
-        self.setWindowTitle("Создание экземпляра/Импорт сборки")
+        self.setWindowTitle("Действия с экземплярами")
         self.setFixedSize(300, 500)
 
         self.choose_mrpack_file_button = QtWidgets.QPushButton(self)
         self.choose_mrpack_file_button.setFixedWidth(120)
         self.choose_mrpack_file_button.move(90, 90)
-        self.choose_mrpack_file_button.setText("Выбрать файл")
+        self.choose_mrpack_file_button.setText("Импорт из .mrpack")
         self.choose_mrpack_file_button.clicked.connect(
             lambda: self._handle_open_mrpack_choosing_window(None)
         )
@@ -1203,7 +1339,13 @@ class InstancesWindow(QtWidgets.QDialog):
         self.create_instance_button.clicked.connect(
             lambda: self.CreateOwnInstance(self)
         )
-
+        self.control_instances_button = QtWidgets.QPushButton(self)
+        self.control_instances_button.setText("Управление экземплярами")
+        self.control_instances_button.setFixedWidth(170)
+        self.control_instances_button.move(65, 150)
+        self.control_instances_button.clicked.connect(
+            lambda: self.ControlInstancesWindow(self)
+        )
         self.show()
 
 
@@ -1669,7 +1811,7 @@ class MainWindow(QtWidgets.QMainWindow):
         )
 
         self.create_instance_button = QtWidgets.QPushButton(self)
-        self.create_instance_button.setText("Создание экземпляра/Импорт сборки")
+        self.create_instance_button.setText("Действия с экземплярами")
         self.create_instance_button.setFixedWidth(220)
         self.create_instance_button.move(40, 400)
         self.create_instance_button.clicked.connect(lambda: InstancesWindow(self))

@@ -126,12 +126,13 @@ def download_instance_from_mrpack(
 
     if mrpack_path:
         mrpack_info = minecraft_launcher_lib.mrpack.get_mrpack_information(mrpack_path)
+        folder_name = generate_folder_name(
+            "_", 5, [mrpack_info["name"], mrpack_info["minecraftVersion"]]
+        )
         instance_path = os.path.join(
             minecraft_directory,
             "instances",
-            generate_folder_name(
-                "_", 5, [mrpack_info["name"], mrpack_info["minecraftVersion"]]
-            ),
+            folder_name,
         )
         minecraft_launcher_lib.mrpack.install_mrpack(
             mrpack_path,
@@ -171,7 +172,7 @@ def download_instance_from_mrpack(
                 "show_message",
                 "information",
                 "Сборка установлена",
-                f"Сборка {mrpack_info['name']} была успешно установлена!",
+                f"Сборка {mrpack_info['name']} была успешно установлена в папку {folder_name}!",
             )
         )
 
