@@ -276,6 +276,7 @@ class ProjectsSearch(QtWidgets.QDialog):
                                     return
                             if (
                                 project["project_type"] == "mod"
+                                and loader != "datapack"
                                 and loader not in instance_info["mc_version"]
                                 and (
                                     QtWidgets.QMessageBox.warning(
@@ -294,6 +295,7 @@ class ProjectsSearch(QtWidgets.QDialog):
                         "mod": "mods",
                         "resourcepack": "resourcepacks",
                         "shader": "shaderpacks",
+                        "datapack": "datapacks",
                         "modpack": None,
                     }
                     if instance:
@@ -1193,30 +1195,36 @@ class InstancesWindow(QtWidgets.QDialog):
                                     "Успешно!",
                                     f"Прокет {project_name} был успешно удалён.",
                                 )
-                                break
-                        else:
-                            if project_type == "mod":
-                                base_path = os.path.join(
-                                    self.instance_path,
-                                    "datapacks",
+                                self._make_ui()
+                                return
+                        if project_type == "mod":
+                            base_path = os.path.join(
+                                self.instance_path,
+                                "datapacks",
+                            )
+                            for project_file_name in os.listdir(base_path):
+                                full_project_path = os.path.join(
+                                    base_path, project_file_name
                                 )
-                                for project_file_name in os.listdir(base_path):
-                                    full_project_path = os.path.join(
-                                        base_path, project_file_name
+                                if (
+                                    hashlib.sha512(
+                                        open(full_project_path, "rb").read()
+                                    ).hexdigest()
+                                    == project_hash
+                                ):
+                                    os.remove(full_project_path)
+                                    QtWidgets.QMessageBox.information(
+                                        self,
+                                        "Успешно!",
+                                        f"Прокет {project_name} был успешно удалён.",
                                     )
-                                    if (
-                                        hashlib.sha512(
-                                            open(full_project_path, "rb").read()
-                                        ).hexdigest()
-                                        == project_hash
-                                    ):
-                                        os.remove(full_project_path)
-                                        QtWidgets.QMessageBox.information(
-                                            self,
-                                            "Успешно!",
-                                            f"Прокет {project_name} был успешно удалён.",
-                                        )
-                        self._make_ui()
+                                    self._make_ui()
+                                    return
+                            QtWidgets.QMessageBox.critical(
+                                self,
+                                "Ошибка!",
+                                f"Не удалось удалить проект {project_name}.",
+                            )
                 except FileNotFoundError:
                     pass
 
@@ -1268,11 +1276,13 @@ class InstancesWindow(QtWidgets.QDialog):
                     params={"ids": json.dumps(list(ids_and_hashes.keys()))},
                 ) as r:
                     r.raise_for_status()
-                    for project_info in r.json():
+                    projects = r.json()
+                    projects_len = len(projects)
+                    for index, project_info in enumerate(r.json()):
                         project_name = project_info["title"]
                         project_type = project_info["project_type"]
                         project_hash = ids_and_hashes[project_info["id"]]
-                        print(project_name)
+                        print(f"{project_name} ({index}/{projects_len})")
 
                         container = QtWidgets.QWidget()
                         h_layout = QtWidgets.QHBoxLayout(container)
