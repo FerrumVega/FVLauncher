@@ -11,6 +11,7 @@ import sys
 import traceback
 import random
 import string
+import hashlib
 from faker import Faker
 from typing import Dict, Union, Callable, Any, Optional, Tuple, Iterable
 from pypresence.presence import Presence
@@ -29,7 +30,7 @@ class Constants:
     ELY_PROXY_URL = "https://fvlauncher.ferrumthevega.workers.dev"
     ELY_CLIENT_ID = "fvlauncherapp"
 
-    LAUNCHER_VERSION = "v7.7.1"
+    LAUNCHER_VERSION = "v7.8"
     USER_AGENT = Faker().user_agent()
 
 
@@ -43,6 +44,60 @@ window_icon = QtGui.QIcon(
         )
     )
 )
+
+
+def search_projects(minecraft_directory: str, instance_name: str, queue: Queue):
+    queue.put(("status", "Вычиление хэшей"))
+    hashes = []
+    instance_path = os.path.join(minecraft_directory, "instances", instance_name)
+    for project_type_folder in [
+        "mods",
+        "resourcepacks",
+        "datapacks",
+        "shaderpacks",
+    ]:
+        try:
+            for filename in os.listdir(
+                os.path.join(instance_path, project_type_folder)
+            ):
+                path = os.path.join(instance_path, project_type_folder, filename)
+                hashes.append(hashlib.sha512(open(path, "rb").read()).hexdigest())
+        except FileNotFoundError:
+            pass
+    queue.put(("status", "Поиск файлов версий"))
+    with requests.post(
+        "https://api.modrinth.com/v2/version_files",
+        json={
+            "hashes": hashes,
+            "algorithm": "sha512",
+        },
+    ) as r:
+        r.raise_for_status()
+        projects = {}
+        for project_hash, project_info in r.json().items():
+            projects[project_info["project_id"]] = project_info
+            projects[project_info["project_id"]]["hash"] = project_hash
+    with requests.get(
+        "https://api.modrinth.com/v2/projects",
+        params={"ids": json.dumps(list(projects.keys()))},
+    ) as r:
+        r.raise_for_status()
+        full_projects = r.json()
+        projects_len = len(full_projects)
+        for index, project_info in enumerate(full_projects, 1):
+            project_name = project_info["title"]
+            project_id = project_info["id"]
+            projects[project_id]["title"] = project_name
+            projects[project_id]["project_type"] = project_info["project_type"]
+            if (icon_url := project_info.get("icon_url")) is not None:
+                with requests.get(icon_url, timeout=10) as r:
+                    r.raise_for_status()
+                    projects[project_id]["icon_bytes"] = r.content
+            logging.debug(f"Doing smth with {project_name} ({index}/{projects_len})")
+            queue.put(("progressbar", index / projects_len * 100))
+            queue.put(("status", f"Работа с {project_name}"))
+
+    queue.put(("projects", projects))
 
 
 def track_progress_factory(queue: Queue):
