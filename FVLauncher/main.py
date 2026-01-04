@@ -10,6 +10,7 @@ from pypresence.presence import Presence
 import pypresence.exceptions
 import logging
 import multiprocessing
+import zipfile
 from faker import Faker
 from typing import Dict, Union, Any, Optional
 import traceback
@@ -171,6 +172,7 @@ def update_ui_from_queue(self):
                         utils.start_rich_presence(self.rpc)
             case "projects":
                 self.projects = value
+                self.other_projects_paths = other_info[0]
                 self._make_ui()
 
 
@@ -249,28 +251,15 @@ class ProjectsSearch(QtWidgets.QDialog):
                             ),
                             encoding="utf-8",
                         ) as mc_version_file:
-                            try:
-                                inherits_from = json.load(mc_version_file).get(
-                                    "inheritsFrom", instance_info["mc_version"]
-                                )
-                                if inherits_from != mc_version:
-                                    if (
-                                        QtWidgets.QMessageBox.warning(
-                                            self,
-                                            "Предупреждение",
-                                            f"Версия игры экземпляра не совпадает с версией игры проекта, который вы выбрали\nВерсия игры проекта: {mc_version}\nВерсия игры сборки: {inherits_from}.\nВы уверены, что хотите установить проект на этот экземпляр?",
-                                            QtWidgets.QMessageBox.StandardButton.Yes
-                                            | QtWidgets.QMessageBox.StandardButton.No,
-                                        )
-                                        != QtWidgets.QMessageBox.StandardButton.Yes
-                                    ):
-                                        return
-                            except KeyError:
-                                if project["project_type"] == "mod" and (
+                            inherits_from = json.load(mc_version_file).get(
+                                "inheritsFrom", instance_info["mc_version"]
+                            )
+                            if inherits_from != mc_version:
+                                if (
                                     QtWidgets.QMessageBox.warning(
                                         self,
                                         "Предупреждение",
-                                        "Вероятнее всего, вы пытаетесь установить мод на ванильный экземпляр. Вы уверены, что хотите установить мод на этот экземпляр?",
+                                        f"Версия игры экземпляра не совпадает с версией игры проекта, который вы выбрали\nВерсия игры проекта: {mc_version}\nВерсия игры сборки: {inherits_from}.\nВы уверены, что хотите установить проект на этот экземпляр?",
                                         QtWidgets.QMessageBox.StandardButton.Yes
                                         | QtWidgets.QMessageBox.StandardButton.No,
                                     )
@@ -285,7 +274,7 @@ class ProjectsSearch(QtWidgets.QDialog):
                                     QtWidgets.QMessageBox.warning(
                                         self,
                                         "Предупреждение",
-                                        f"Вероятнее всего, вы пытаетесь установить мод на неподходящий загрузчик модов.\nНазвание папки версии: {instance_info['mc_version']}\nВыбранный загрузчик модов: {loader}.\nВы уверены, что хотите установить мод на этот экземпляр?",
+                                        f"Вероятнее всего, вы пытаетесь установить мод на неподходящий загрузчик модов или на ванильный экземпляр.\nНазвание папки версии: {instance_info['mc_version']}\nВыбранный загрузчик модов: {loader}.\nВы уверены, что хотите установить мод на этот экземпляр?",
                                         QtWidgets.QMessageBox.StandardButton.Yes
                                         | QtWidgets.QMessageBox.StandardButton.No,
                                     )
@@ -1286,64 +1275,118 @@ class InstancesWindow(QtWidgets.QDialog):
                     pass
 
             def export_mrpack(self):
-                QtWidgets.QMessageBox.information(
-                    self, "WORK IN PROGRESS", "WORK IN PROGRESS"
+                NAME, ok = QtWidgets.QInputDialog.getText(
+                    self, "Создание mrpack", "Введите имя сборки"
                 )
-                # index_dict = {
-                #     "formatVersion": 1,
-                #     "game": "minecraft",
-                #     "versionId": VERSION_ID,
-                #     "name": NAME,
-                #     "summary": SUMMARY,
-                #     "files": [],
-                #     "dependencies": {
-                #         "minecraft": MC_VERSION,
-                #         "fabric-loader": LOADER_VERSION,
-                #     },
-                # }
-                # with open(
-                #     os.path.join(
-                #         main_window.minecraft_directory,
-                #         "instances",
-                #         self.instance_path,
-                #         "instance_info.json",
-                #     )
-                # ) as instance_info_file:
-                #     mc_version = json.load(instance_info_file)["mc_version"]
-                # with open(
-                #     os.path.join(
-                #         main_window.minecraft_directory,
-                #         "versions",
-                #         mc_version,
-                #         f"{mc_version}.json",
-                #     )
-                # ) as mc_version_file:
-                #     mc_version_json = json.load(mc_version_file)
-                #     if "fabric" in mc_version:
-                #         for lib in mc_version_json["libraries"]:
-                #             if "net.fabricmc:fabric-loader:" in lib["name"]:
-                #                 print(
-                #                     lib["name"].removeprefix(
-                #                         "net.fabricmc:fabric-loader:"
-                #                     )
-                #                 )
-                #                 break
-                #     elif "neoforge" in mc_version:
-                #         print(mc_version_json["id"].removeprefix("neoforge-"))
-                #     elif "forge" in mc_version:
-                #         print(mc_version_json["id"].split("-forge-")[-1])
-                #     elif "quilt" in mc_version:
-                #         for lib in mc_version_json["libraries"]:
-                #             if "org.quiltmc:quilt-loader:" in lib["name"]:
-                #                 print(
-                #                     lib["name"].removeprefix(
-                #                         "org.quiltmc:quilt-loader:"
-                #                     )
-                #                 )
-                #                 break
+                if not NAME or not ok:
+                    return
+                VERSION_ID, ok = QtWidgets.QInputDialog.getText(
+                    self,
+                    "Создание mrpack",
+                    "Введите версию сборки",
+                )
+                if not VERSION_ID or not ok:
+                    return
+                SUMMARY, ok = QtWidgets.QInputDialog.getText(
+                    self,
+                    "Создание mrpack",
+                    "Введите краткое описание сборки (необязательно)",
+                )
+                if not ok:
+                    return
+                overrides_paths, _ = QtWidgets.QFileDialog.getOpenFileNames(
+                    self,
+                    "Выберите оверрайды",
+                    self.instance_path,
+                    "Все файлы (*)",
+                )
+                overrides_paths.extend(self.other_projects_paths)
+                index_dict = {
+                    "formatVersion": 1,
+                    "game": "minecraft",
+                    "versionId": VERSION_ID,
+                    "name": NAME,
+                    "summary": SUMMARY,
+                    "files": [],
+                    "dependencies": {
+                        "minecraft": None,
+                    },
+                }
+                with open(
+                    os.path.join(self.instance_path, "instance_info.json")
+                ) as instance_info_file:
+                    mc_version = json.load(instance_info_file)["mc_version"]
+                with open(
+                    os.path.join(
+                        main_window.minecraft_directory,
+                        "versions",
+                        mc_version,
+                        f"{mc_version}.json",
+                    )
+                ) as mc_version_file:
+                    mc_version_json = json.load(mc_version_file)
+                    if "fabric" in mc_version:
+                        for lib in mc_version_json["libraries"]:
+                            if "net.fabricmc:fabric-loader:" in lib["name"]:
+                                index_dict["dependencies"]["fabric-loader"] = lib[
+                                    "name"
+                                ].removeprefix("net.fabricmc:fabric-loader:")
+                                break
+                    elif "neoforge" in mc_version:
+                        index_dict["dependencies"]["neoforge"] = mc_version_json[
+                            "id"
+                        ].removeprefix("neoforge-")
+                    elif "forge" in mc_version:
+                        index_dict["dependencies"]["forge"](
+                            mc_version_json["id"].split("-forge-")[-1]
+                        )
+                    elif "quilt" in mc_version:
+                        for lib in mc_version_json["libraries"]:
+                            if "org.quiltmc:quilt-loader:" in lib["name"]:
+                                index_dict["dependencies"]["quilt-loader"] = lib[
+                                    "name"
+                                ].removeprefix("org.quiltmc:quilt-loader:")
+                                break
+                    try:
+                        raw_version = mc_version_json["inheritsFrom"]
+                    except KeyError:
+                        raw_version = mc_version
+                    index_dict["dependencies"]["minecraft"] = raw_version
 
-                # for project in self.projects:
-                #     pass
+                for project_id, project_info in self.projects.items():
+                    for file in project_info["files"]:
+                        if file["primary"]:
+                            primary_file = file
+                    else:
+                        primary_file = project_info["files"][0]
+                    index_dict["files"].append(
+                        {
+                            "path": os.path.relpath(
+                                project_info["path"], self.instance_path
+                            ).replace("\\", "/"),
+                            "hashes": primary_file["hashes"],
+                            "downloads": [primary_file["url"]],
+                            "fileSize": primary_file["size"],
+                        }
+                    )
+                mrpack_path, _ = QtWidgets.QFileDialog.getSaveFileName(
+                    self,
+                    "Сохранить mrpack",
+                    "",
+                    "MRPACK Files (*.mrpack);;All Files (*)",
+                )
+                with zipfile.ZipFile(mrpack_path, "w", zipfile.ZIP_DEFLATED) as zf:
+                    zf.writestr("modrinth.index.json", json.dumps(index_dict, indent=4))
+                    for path in overrides_paths:
+                        zf.write(
+                            path,
+                            os.path.join(
+                                "overrides", os.path.relpath(path, self.instance_path)
+                            ),
+                        )
+                QtWidgets.QMessageBox.information(
+                    self, "Экспорт mrpack", f"Mrpack был сохранён по пути {mrpack_path}"
+                )
 
             def _make_ui(self):
                 self.setModal(True)

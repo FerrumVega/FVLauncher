@@ -33,7 +33,7 @@ class Constants:
     ELY_PROXY_URL = "https://fvlauncher.ferrumthevega.workers.dev"
     ELY_CLIENT_ID = "fvlauncherapp"
 
-    LAUNCHER_VERSION = "v7.8.2"
+    LAUNCHER_VERSION = "v8.0"
     USER_AGENT = Faker().user_agent()
 
 
@@ -85,6 +85,7 @@ def search_projects(minecraft_directory: str, instance_name: str, queue: Queue):
             projects[project_info["project_id"]]["path"] = hashes_and_paths[
                 project_hash
             ]
+            del hashes_and_paths[project_hash]
     with requests.get(
         "https://api.modrinth.com/v2/projects",
         params={"ids": json.dumps(list(projects.keys()))},
@@ -104,9 +105,7 @@ def search_projects(minecraft_directory: str, instance_name: str, queue: Queue):
             logging.debug(f"Doing smth with {project_name} ({index}/{projects_len})")
             queue.put(("progressbar", index / projects_len * 100))
             queue.put(("status", f"Работа с {project_name}"))
-            print(projects[project_id])
-
-    queue.put(("projects", projects))
+    queue.put(("projects", projects, list(hashes_and_paths.values())))
 
 
 def track_progress_factory(queue: Queue):
