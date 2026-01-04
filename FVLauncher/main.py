@@ -129,11 +129,11 @@ def update_ui_from_queue(self):
                 match value:
                     case "critical":
                         QtWidgets.QMessageBox.critical(
-                            self, other_info[1], other_info[2]
+                            self, other_info[0], other_info[1]
                         )
                     case "warning":
                         QtWidgets.QMessageBox.warning(
-                            self, other_info[1], other_info[2]
+                            self, other_info[0], other_info[1]
                         )
                     case "information":
                         match other_info:
@@ -1286,8 +1286,64 @@ class InstancesWindow(QtWidgets.QDialog):
                     pass
 
             def export_mrpack(self):
-                for project in self.projects:
-                    pass
+                QtWidgets.QMessageBox.information(
+                    self, "WORK IN PROGRESS", "WORK IN PROGRESS"
+                )
+                # index_dict = {
+                #     "formatVersion": 1,
+                #     "game": "minecraft",
+                #     "versionId": VERSION_ID,
+                #     "name": NAME,
+                #     "summary": SUMMARY,
+                #     "files": [],
+                #     "dependencies": {
+                #         "minecraft": MC_VERSION,
+                #         "fabric-loader": LOADER_VERSION,
+                #     },
+                # }
+                # with open(
+                #     os.path.join(
+                #         main_window.minecraft_directory,
+                #         "instances",
+                #         self.instance_path,
+                #         "instance_info.json",
+                #     )
+                # ) as instance_info_file:
+                #     mc_version = json.load(instance_info_file)["mc_version"]
+                # with open(
+                #     os.path.join(
+                #         main_window.minecraft_directory,
+                #         "versions",
+                #         mc_version,
+                #         f"{mc_version}.json",
+                #     )
+                # ) as mc_version_file:
+                #     mc_version_json = json.load(mc_version_file)
+                #     if "fabric" in mc_version:
+                #         for lib in mc_version_json["libraries"]:
+                #             if "net.fabricmc:fabric-loader:" in lib["name"]:
+                #                 print(
+                #                     lib["name"].removeprefix(
+                #                         "net.fabricmc:fabric-loader:"
+                #                     )
+                #                 )
+                #                 break
+                #     elif "neoforge" in mc_version:
+                #         print(mc_version_json["id"].removeprefix("neoforge-"))
+                #     elif "forge" in mc_version:
+                #         print(mc_version_json["id"].split("-forge-")[-1])
+                #     elif "quilt" in mc_version:
+                #         for lib in mc_version_json["libraries"]:
+                #             if "org.quiltmc:quilt-loader:" in lib["name"]:
+                #                 print(
+                #                     lib["name"].removeprefix(
+                #                         "org.quiltmc:quilt-loader:"
+                #                     )
+                #                 )
+                #                 break
+
+                # for project in self.projects:
+                #     pass
 
             def _make_ui(self):
                 self.setModal(True)
@@ -1383,7 +1439,7 @@ class InstancesWindow(QtWidgets.QDialog):
                         "Успешно!",
                         f"Версия экземпляра успешно изменена на {mc_version}",
                     )
-                    self._make_ui()
+                self._make_ui()
 
         def rename_instance(self, instance_name: str):
             new_name, ok = QtWidgets.QInputDialog.getText(
@@ -1464,9 +1520,8 @@ class InstancesWindow(QtWidgets.QDialog):
                         container, text="Изменить версию"
                     )
                     change_version_label.clicked.connect(
-                        lambda cur_instance_name=instance_name,
-                        cur_label=main_label: self.change_instance_mc_version(
-                            cur_instance_name, cur_label
+                        lambda cur_instance_name=instance_name: self.change_instance_mc_version(
+                            cur_instance_name
                         )
                     )
                     projects_label = ClickableLabel(

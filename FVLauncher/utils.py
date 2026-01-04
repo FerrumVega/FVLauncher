@@ -382,8 +382,6 @@ def resolve_version_name(
     queue: Queue,
     ignore_installed_file: bool = False,
 ) -> Tuple[Union[None, str], Dict[str, bool | str]]:
-    other_loaders = ["fabric", "forge", "quilt", "neoforge", "vanilla"]
-    other_loaders.remove(mod_loader)
     for v in sorted(
         minecraft_launcher_lib.utils.get_installed_versions(minecraft_directory),
         reverse=True,
@@ -400,8 +398,8 @@ def resolve_version_name(
         ):
             if mod_loader == "vanilla" and folder_name == version:
                 return folder_name, {}
-            elif mod_loader != "vanilla" and all(
-                loader not in folder_name for loader in other_loaders
+            elif mod_loader != "vanilla" and (
+                "forge" not in folder_name if folder_name == "neoforge" else 1
             ):
                 with open(
                     os.path.join(
