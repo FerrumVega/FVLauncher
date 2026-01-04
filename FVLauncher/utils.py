@@ -19,6 +19,9 @@ from multiprocessing.queues import Queue
 from PySide6 import QtWidgets, QtGui
 from defusedxml import ElementTree as ET
 
+logging.getLogger("requests").setLevel(logging.WARNING)
+logging.getLogger("urllib3").setLevel(logging.WARNING)
+
 
 class Constants:
     DISCORD_CLIENT_ID = "1399428342117175497"
@@ -30,7 +33,7 @@ class Constants:
     ELY_PROXY_URL = "https://fvlauncher.ferrumthevega.workers.dev"
     ELY_CLIENT_ID = "fvlauncherapp"
 
-    LAUNCHER_VERSION = "v7.8"
+    LAUNCHER_VERSION = "v7.8.1"
     USER_AGENT = Faker().user_agent()
 
 
@@ -48,7 +51,7 @@ window_icon = QtGui.QIcon(
 
 def search_projects(minecraft_directory: str, instance_name: str, queue: Queue):
     queue.put(("status", "Вычиление хэшей"))
-    hashes = []
+    hashes_and_paths = {}
     instance_path = os.path.join(minecraft_directory, "instances", instance_name)
     for project_type_folder in [
         "mods",
@@ -61,14 +64,16 @@ def search_projects(minecraft_directory: str, instance_name: str, queue: Queue):
                 os.path.join(instance_path, project_type_folder)
             ):
                 path = os.path.join(instance_path, project_type_folder, filename)
-                hashes.append(hashlib.sha512(open(path, "rb").read()).hexdigest())
+                hashes_and_paths[
+                    hashlib.sha512(open(path, "rb").read()).hexdigest()
+                ] = path
         except FileNotFoundError:
             pass
     queue.put(("status", "Поиск файлов версий"))
     with requests.post(
         "https://api.modrinth.com/v2/version_files",
         json={
-            "hashes": hashes,
+            "hashes": list(hashes_and_paths.keys()),
             "algorithm": "sha512",
         },
     ) as r:
@@ -77,6 +82,9 @@ def search_projects(minecraft_directory: str, instance_name: str, queue: Queue):
         for project_hash, project_info in r.json().items():
             projects[project_info["project_id"]] = project_info
             projects[project_info["project_id"]]["hash"] = project_hash
+            projects[project_info["project_id"]]["path"] = hashes_and_paths[
+                project_hash
+            ]
     with requests.get(
         "https://api.modrinth.com/v2/projects",
         params={"ids": json.dumps(list(projects.keys()))},
@@ -96,6 +104,7 @@ def search_projects(minecraft_directory: str, instance_name: str, queue: Queue):
             logging.debug(f"Doing smth with {project_name} ({index}/{projects_len})")
             queue.put(("progressbar", index / projects_len * 100))
             queue.put(("status", f"Работа с {project_name}"))
+            print(projects[project_id])
 
     queue.put(("projects", projects))
 

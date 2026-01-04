@@ -1285,6 +1285,10 @@ class InstancesWindow(QtWidgets.QDialog):
                 except FileNotFoundError:
                     pass
 
+            def export_mrpack(self):
+                for project in self.projects:
+                    pass
+
             def _make_ui(self):
                 self.setModal(True)
                 self.setWindowTitle("Управление экземплярами")
@@ -1332,11 +1336,13 @@ class InstancesWindow(QtWidgets.QDialog):
 
                     self.projects_layout.addWidget(container)
 
-                self.projects_layout.addWidget(
-                    ClickableLabel(self, text="Экспорт в .mrpack")
+                self.export_mrpack_button = ClickableLabel(
+                    self, text="Экспорт в .mrpack"
                 )
+                self.export_mrpack_button.clicked.connect(self.export_mrpack)
+                self.projects_layout.addWidget(self.export_mrpack_button)
 
-                self.progressbar_window.close()
+                self.progress_window.close()
                 self.show()
 
         def __init__(self, parent: QtWidgets.QWidget):
