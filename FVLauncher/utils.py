@@ -33,7 +33,7 @@ class Constants:
     ELY_PROXY_URL = "https://fvlauncher.ferrumthevega.workers.dev"
     ELY_CLIENT_ID = "fvlauncherapp"
 
-    LAUNCHER_VERSION = "v8.0"
+    LAUNCHER_VERSION = "v8.1"
     USER_AGENT = Faker().user_agent()
 
 
@@ -81,7 +81,6 @@ def search_projects(minecraft_directory: str, instance_name: str, queue: Queue):
         projects = {}
         for project_hash, project_info in r.json().items():
             projects[project_info["project_id"]] = project_info
-            projects[project_info["project_id"]]["hash"] = project_hash
             projects[project_info["project_id"]]["path"] = hashes_and_paths[
                 project_hash
             ]
@@ -97,11 +96,15 @@ def search_projects(minecraft_directory: str, instance_name: str, queue: Queue):
             project_name = project_info["title"]
             project_id = project_info["id"]
             projects[project_id]["title"] = project_name
-            projects[project_id]["project_type"] = project_info["project_type"]
+            projects[project_id]["disabled"] = projects[project_id]["path"].endswith(
+                ".disabled"
+            )
             if (icon_url := project_info.get("icon_url")) is not None:
                 with requests.get(icon_url, timeout=10) as r:
                     r.raise_for_status()
                     projects[project_id]["icon_bytes"] = r.content
+            else:
+                projects[project_id]["icon_bytes"] = None
             logging.debug(f"Doing smth with {project_name} ({index}/{projects_len})")
             queue.put(("progressbar", index / projects_len * 100))
             queue.put(("status", f"Работа с {project_name}"))

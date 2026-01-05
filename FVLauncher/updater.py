@@ -1,6 +1,7 @@
 import subprocess
 import requests
 import json
+import tempfile
 
 
 def is_new_version_released(current_version):
@@ -15,7 +16,9 @@ def is_new_version_released(current_version):
 
 
 def update():
-    with open("FVLauncher_Installer.exe", "wb") as launcher_installer_file:
+    with tempfile.NamedTemporaryFile(
+        prefix="FVLInstaller_", suffix=".exe", delete=False
+    ) as launcher_installer_file:
         with requests.get(
             "https://github.com/FerrumVega/FVLauncher/releases/latest/download/FVLauncher_Installer.exe",
             timeout=10,
@@ -24,6 +27,6 @@ def update():
             launcher_installer_file.write(r.content)
 
     subprocess.Popen(
-        ["FVLauncher_Installer.exe", "/SILENT"],
+        [launcher_installer_file.name],
         creationflags=subprocess.CREATE_NO_WINDOW,
     )

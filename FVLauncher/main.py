@@ -17,7 +17,6 @@ import traceback
 from minecraft_launcher_lib.exceptions import AccountNotOwnMinecraft
 import time
 import shutil
-import hashlib
 
 import utils
 import updater
@@ -189,8 +188,8 @@ class ClickableLabel(QtWidgets.QLabel):
     clicked = Signal()
 
     def mouseReleaseEvent(self, e: QtGui.QMouseEvent):
-        super().mouseReleaseEvent(e)
         self.clicked.emit()
+        super().mouseReleaseEvent(e)
 
 
 class ProjectsSearch(QtWidgets.QDialog):
@@ -1175,7 +1174,7 @@ class InstancesWindow(QtWidgets.QDialog):
                 self.projects_layout = QtWidgets.QVBoxLayout(self.projects_container)
 
                 self.scroll_area = QtWidgets.QScrollArea(self)
-                self.scroll_area.setFixedSize(700, 500)
+                self.scroll_area.setFixedSize(1000, 500)
                 self.scroll_area.setWidget(self.projects_container)
                 self.scroll_area.setWidgetResizable(True)
 
@@ -1199,80 +1198,26 @@ class InstancesWindow(QtWidgets.QDialog):
                 self.timer.start(200)
 
             def delete_project(self, project_id: str):
+                project_path = self.projects[project_id]["path"]
                 project_name = self.projects[project_id]["title"]
-                project_type = self.projects[project_id]["project_type"]
-                project_hash = self.projects[project_id]["hash"]
-                try:
-                    type_to_dir = {
-                        "mod": "mods",
-                        "resourcepack": "resourcepacks",
-                        "shader": "shaderpacks",
-                    }
-                    if (
-                        QtWidgets.QMessageBox.information(
-                            self,
-                            "Удаление экземпляра",
-                            f"Вы уверены, что хотите удалить проект {project_name}?",
-                            QtWidgets.QMessageBox.StandardButton.Yes
-                            | QtWidgets.QMessageBox.StandardButton.No,
-                        )
-                        == QtWidgets.QMessageBox.StandardButton.Yes
-                    ):
-                        base_path = os.path.join(
-                            self.instance_path,
-                            type_to_dir[project_type],
-                        )
-                        for project_file_name in os.listdir(base_path):
-                            full_project_path = os.path.join(
-                                base_path,
-                                project_file_name,
-                            )
-                            if (
-                                hashlib.sha512(
-                                    open(full_project_path, "rb").read()
-                                ).hexdigest()
-                                == project_hash
-                            ):
-                                os.remove(full_project_path)
-                                QtWidgets.QMessageBox.information(
-                                    self,
-                                    "Успешно!",
-                                    f"Прокет {project_name} был успешно удалён.",
-                                )
-                                self.projects[project_id]["container"].deleteLater()
-                                del self.projects[project_id]
-                                return
-                        if project_type == "mod":
-                            base_path = os.path.join(
-                                self.instance_path,
-                                "datapacks",
-                            )
-                            for project_file_name in os.listdir(base_path):
-                                full_project_path = os.path.join(
-                                    base_path, project_file_name
-                                )
-                                if (
-                                    hashlib.sha512(
-                                        open(full_project_path, "rb").read()
-                                    ).hexdigest()
-                                    == project_hash
-                                ):
-                                    os.remove(full_project_path)
-                                    QtWidgets.QMessageBox.information(
-                                        self,
-                                        "Успешно!",
-                                        f"Прокет {project_name} был успешно удалён.",
-                                    )
-                                    self.projects[project_id]["container"].deleteLater()
-                                    del self.projects[project_id]
-                                    return
-                            QtWidgets.QMessageBox.critical(
-                                self,
-                                "Ошибка!",
-                                f"Не удалось удалить проект {project_name}.",
-                            )
-                except FileNotFoundError:
-                    pass
+                if (
+                    QtWidgets.QMessageBox.information(
+                        self,
+                        "Удаление экземпляра",
+                        f"Вы уверены, что хотите удалить проект {project_name}?",
+                        QtWidgets.QMessageBox.StandardButton.Yes
+                        | QtWidgets.QMessageBox.StandardButton.No,
+                    )
+                    == QtWidgets.QMessageBox.StandardButton.Yes
+                ):
+                    os.remove(project_path)
+                    QtWidgets.QMessageBox.information(
+                        self,
+                        "Успешно!",
+                        f"Прокет {project_name} был успешно удалён.",
+                    )
+                    self.projects[project_id]["container"].deleteLater()
+                    del self.projects[project_id]
 
             def export_mrpack(self):
                 NAME, ok = QtWidgets.QInputDialog.getText(
@@ -1388,10 +1333,31 @@ class InstancesWindow(QtWidgets.QDialog):
                     self, "Экспорт mrpack", f"Mrpack был сохранён по пути {mrpack_path}"
                 )
 
+            def on_off_project(self, project_id: str, on_off_button: ClickableLabel):
+                project_path = self.projects[project_id]["path"]
+                disabled = self.projects[project_id]["disabled"]
+                if disabled:
+                    dst = project_path.removesuffix(".disabled")
+                    os.rename(project_path, dst)
+                    QtWidgets.QMessageBox.information(
+                        self, "Включение проекта", "Проект был успешно включен."
+                    )
+                    on_off_button.setText("Выключить")
+                    self.projects[project_id]["disabled"] = False
+                else:
+                    dst = f"{project_path}.disabled"
+                    os.rename(project_path, dst)
+                    QtWidgets.QMessageBox.information(
+                        self, "Выключение проекта", "Проект был успешно выключен."
+                    )
+                    on_off_button.setText("Включить")
+                    self.projects[project_id]["disabled"] = True
+                self.projects[project_id]["path"] = dst
+
             def _make_ui(self):
                 self.setModal(True)
                 self.setWindowTitle("Управление экземплярами")
-                self.setFixedSize(700, 500)
+                self.setFixedSize(1000, 500)
                 self.projects_len = len(self.projects.items())
 
                 for index, (project_id, project_info) in enumerate(
@@ -1418,19 +1384,33 @@ class InstancesWindow(QtWidgets.QDialog):
                         project_icon = QtWidgets.QLabel(self)
                         project_icon.setPixmap(icon)
                         self.progressbar.setValue(index / self.projects_len * 100)
+                        h_layout.addWidget(project_icon)
 
                     project_name_label = QtWidgets.QLabel(container, text=project_name)
-                    delete_label = ClickableLabel(container, text="Удалить")
-                    delete_label.clicked.connect(
+
+                    project_disabled = project_info["disabled"]
+                    on_off_button = ClickableLabel(container)
+                    on_off_button.clicked.connect(
+                        lambda cur_project_id=project_id,: self.on_off_project(
+                            cur_project_id, on_off_button
+                        )
+                    )
+                    if project_disabled:
+                        on_off_button.setText("Включить")
+                    else:
+                        on_off_button.setText("Выключить")
+
+                    delete_button = ClickableLabel(container, text="Удалить")
+                    delete_button.clicked.connect(
                         lambda cur_project_id=project_id: self.delete_project(
                             cur_project_id
                         )
                     )
 
-                    h_layout.addWidget(project_icon)
                     h_layout.addWidget(project_name_label)
                     h_layout.addStretch()
-                    h_layout.addWidget(delete_label)
+                    h_layout.addWidget(on_off_button)
+                    h_layout.addWidget(delete_button)
                     self.projects[project_id]["container"] = container
 
                     self.projects_layout.addWidget(container)
@@ -1451,7 +1431,7 @@ class InstancesWindow(QtWidgets.QDialog):
             self.instances_layout = QtWidgets.QVBoxLayout(self.instances_container)
 
             self.scroll_area = QtWidgets.QScrollArea(self)
-            self.scroll_area.setFixedSize(700, 500)
+            self.scroll_area.setFixedSize(1000, 500)
             self.scroll_area.setWidget(self.instances_container)
             self.scroll_area.setWidgetResizable(True)
 
@@ -1525,7 +1505,7 @@ class InstancesWindow(QtWidgets.QDialog):
         def _make_ui(self):
             self.setModal(True)
             self.setWindowTitle("Управление экземплярами")
-            self.setFixedSize(700, 500)
+            self.setFixedSize(1000, 500)
 
             while self.instances_layout.count():
                 widget = self.instances_layout.takeAt(0).widget()
@@ -1553,30 +1533,33 @@ class InstancesWindow(QtWidgets.QDialog):
                     main_label = QtWidgets.QLabel(
                         container, text=f"{instance_name} ({mc_version})"
                     )
-                    rename_label = ClickableLabel(container, text="Переименовать")
-                    rename_label.clicked.connect(
+                    rename_button = ClickableLabel(container, text="Переименовать")
+                    rename_button.clicked.connect(
                         lambda cur_instance_name=instance_name: self.rename_instance(
                             cur_instance_name
                         )
                     )
-                    change_version_label = ClickableLabel(
+                    change_version_button = ClickableLabel(
                         container, text="Изменить версию"
                     )
-                    change_version_label.clicked.connect(
+                    change_version_button.clicked.connect(
                         lambda cur_instance_name=instance_name: self.change_instance_mc_version(
                             cur_instance_name
                         )
                     )
-                    projects_label = ClickableLabel(
+                    projects_button = ClickableLabel(
                         container, text="Управление проектами"
                     )
-                    projects_label.clicked.connect(
+                    projects_button.clicked.connect(
                         lambda cur_instance_name=instance_name: self.InstanceProjectsWindow(
                             self, cur_instance_name
                         )
                     )
-                    delete_label = ClickableLabel(container, text="Удалить")
-                    delete_label.clicked.connect(
+                    projects_button.setToolTip(
+                        "Зажмите Shift при нажатии, чтобы не загружать аватарки проектов."
+                    )
+                    delete_button = ClickableLabel(container, text="Удалить")
+                    delete_button.clicked.connect(
                         lambda cur_instance_name=instance_name: self.delete_instance(
                             cur_instance_name
                         )
@@ -1584,10 +1567,10 @@ class InstancesWindow(QtWidgets.QDialog):
 
                     h_layout.addWidget(main_label)
                     h_layout.addStretch()
-                    h_layout.addWidget(change_version_label)
-                    h_layout.addWidget(rename_label)
-                    h_layout.addWidget(delete_label)
-                    h_layout.addWidget(projects_label)
+                    h_layout.addWidget(change_version_button)
+                    h_layout.addWidget(rename_button)
+                    h_layout.addWidget(delete_button)
+                    h_layout.addWidget(projects_button)
 
                     self.instances_layout.addWidget(container)
 
@@ -2199,12 +2182,7 @@ class MainWindow(QtWidgets.QMainWindow):
                 QtWidgets.QMessageBox.information(
                     self,
                     "Новое обновление!",
-                    "Вышло новое обновление лаунчера.<br>"
-                    "Нажмите Оk для обновления.<br>"
-                    "После загрузки инсталлера, согласитесь на внесение изменений на устройстве.<br>"
-                    'Нажимая "Ok", вы соглашаетесь с текстами лицензий, расположенных по адресам:<br>'
-                    '<a href="https://raw.githubusercontent.com/FerrumVega/FVLauncher/refs/heads/main/LICENSE">https://raw.githubusercontent.com/FerrumVega/FVLauncher/refs/heads/main/LICENSE</a><br>'
-                    '<a href="https://raw.githubusercontent.com/FerrumVega/FVLauncher/refs/heads/main/THIRD_PARTY_LICENSES">https://raw.githubusercontent.com/FerrumVega/FVLauncher/refs/heads/main/THIRD_PARTY_LICENSES</a>',
+                    "Вышло новое обновление лаунчера. Нажмите Оk для обновления. После загрузки инсталлера, согласитесь на внесение изменений на устройстве.",
                     QtWidgets.QMessageBox.StandardButton.Ok
                     | QtWidgets.QMessageBox.StandardButton.Cancel,
                 )
