@@ -59,7 +59,7 @@ def load_config():
             "optifine": "0",
         },
         "Settings": {
-            "java_arguments": "-XX:+UseZGC -XX:+ZGenerational",
+            "java_arguments": "",
             "show_console": "0",
             "show_old_alphas": "0",
             "show_old_betas": "0",
@@ -814,7 +814,7 @@ class AccountWindow(QtWidgets.QDialog):
                 self.view.setUrl("https://ely.by/skins")
             elif self.launch_account_type == "Microsoft":
                 self.view.setUrl(
-                    "https://www.minecraft.net/ru-ru/msainstance/mygames/editskin"
+                    "https://www.minecraft.net/ru-ru/msaprofile/mygames/editskin"
                 )
 
             self.view_layout = QtWidgets.QVBoxLayout(self)
