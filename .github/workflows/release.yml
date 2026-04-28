@@ -31,7 +31,7 @@ jobs:
         run: choco install innosetup --no-progress
 
       - name: Build with PyInstaller and Inno Setup
-        run:  .\builds\build.bat
+        run:  .\build.bat
 
       - name: Upload installer to release
         uses: softprops/action-gh-release@v2
