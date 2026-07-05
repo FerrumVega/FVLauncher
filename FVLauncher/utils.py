@@ -33,7 +33,7 @@ class Constants:
     ELY_PROXY_URL = "https://fvlauncher.ferrumthevega.workers.dev"
     ELY_CLIENT_ID = "fvlauncherapp"
 
-    LAUNCHER_VERSION = "v8.2.2"
+    LAUNCHER_VERSION = "v8.3"
     USER_AGENT = Faker().user_agent()
 
 
@@ -140,16 +140,12 @@ def hide_security_data(data: str):
 def generate_folder_name(
     separator: str, random_symbols_len: int, strings: Iterable[str]
 ):
-    return separator.join(
-        (
-            *strings,
-            "".join(
-                random.choices(
-                    string.ascii_letters + string.digits, k=random_symbols_len
-                )
-            ),
-        )
-    )
+    return separator.join((
+        *strings,
+        "".join(
+            random.choices(string.ascii_letters + string.digits, k=random_symbols_len)
+        ),
+    ))
 
 
 def run_in_process_with_exceptions_logging(
@@ -162,13 +158,11 @@ def run_in_process_with_exceptions_logging(
     try:
         func(*args, queue, **kwargs)
     except Exception as e:
-        queue.put(
-            (
-                "log_exception",
-                None,
-                "".join(traceback.format_exception(type(e), e, e.__traceback__)),
-            )
-        )
+        queue.put((
+            "log_exception",
+            None,
+            "".join(traceback.format_exception(type(e), e, e.__traceback__)),
+        ))
         if is_game_launch_process:
             queue.put(("start_button", True))
 
@@ -233,14 +227,12 @@ def download_instance_from_mrpack(
             encoding="utf-8",
         ).close()
         queue.put(("show_versions", None))
-        queue.put(
-            (
-                "show_message",
-                "information",
-                "Сборка установлена",
-                f"Сборка {mrpack_info['name']} была успешно установлена в папку {folder_name}!",
-            )
-        )
+        queue.put((
+            "show_message",
+            "information",
+            "Сборка установлена",
+            f"Сборка {mrpack_info['name']} была успешно установлена в папку {folder_name}!",
+        ))
 
 
 def prepare_installation_parameters(
@@ -321,14 +313,12 @@ def download_authlib(
                             )
                         break
                 else:
-                    queue.put(
-                        (
-                            "show_message",
-                            "warning",
-                            "Ошибка authlib",
-                            "Для данной версии ещё не вышла патченая authlib, обычна она выходит в течении пяти дней после выхода версии.",
-                        )
-                    )
+                    queue.put((
+                        "show_message",
+                        "warning",
+                        "Ошибка authlib",
+                        "Для данной версии ещё не вышла патченая authlib, обычна она выходит в течении пяти дней после выхода версии.",
+                    ))
                     logging.warning(
                         f"Warning message showed in download_authlib: skin error, there is not patched authlib for {raw_version} version"
                     )
@@ -352,26 +342,22 @@ def download_authlib(
                     logging.debug("Installed original authlib")
 
         else:
-            queue.put(
-                (
-                    "show_message",
-                    "warning",
-                    "Ошибка authlib",
-                    "На данной версии нет authlib, скины и авторизация не поддерживаются.",
-                )
-            )
+            queue.put((
+                "show_message",
+                "warning",
+                "Ошибка authlib",
+                "На данной версии нет authlib, скины и авторизация не поддерживаются.",
+            ))
             logging.warning(
                 f"Warning message showed in download_authlib: skins not supported on {raw_version} version"
             )
     else:
-        queue.put(
-            (
-                "show_message",
-                "warning",
-                "Ошибка authlib",
-                "Отсутсвует подключение к интернету.",
-            )
-        )
+        queue.put((
+            "show_message",
+            "warning",
+            "Ошибка authlib",
+            "Отсутсвует подключение к интернету.",
+        ))
         logging.warning(
             "Warning message showed in download_authlib: skin error, no internet connection"
         )
@@ -437,24 +423,20 @@ def resolve_version_name(
                             )
                         }
                     elif mod_loader == "vanilla":
-                        queue.put(
-                            (
-                                "show_message",
-                                "critical",
-                                "Ошибка запуска профиля/сборки",
-                                "Версия игры, которую требует профиль/сборка некорректно установлена. Запуск невозможен.",
-                            )
-                        )
+                        queue.put((
+                            "show_message",
+                            "critical",
+                            "Ошибка запуска профиля/сборки",
+                            "Версия игры, которую требует профиль/сборка некорректно установлена. Запуск невозможен.",
+                        ))
                         return None, {"do_not_install": True}
                     else:
-                        queue.put(
-                            (
-                                "show_message",
-                                "critical",
-                                "Ошибка запуска профиля/сборки",
-                                'Для запуска сборки/профиля выберите "vanilla" в списке загрузчиков модов',
-                            )
-                        )
+                        queue.put((
+                            "show_message",
+                            "critical",
+                            "Ошибка запуска профиля/сборки",
+                            'Для запуска сборки/профиля выберите "vanilla" в списке загрузчиков модов',
+                        ))
                         return None, {"do_not_install": True}
         else:
             return None, {}
@@ -512,41 +494,35 @@ def install_version(
             ).close()
             return name_of_folder_with_version, minecraft_directory, options
         else:
-            queue.put(
-                (
-                    "show_message",
-                    "critical",
-                    "Ошибка загрузки",
-                    "Произошла непредвиденная ошибка во время загрузки версии.",
-                )
-            )
+            queue.put((
+                "show_message",
+                "critical",
+                "Ошибка загрузки",
+                "Произошла непредвиденная ошибка во время загрузки версии.",
+            ))
             queue.put(("start_button", True))
             logging.error(
                 f"Error message showed in install_version: error after download {version} version"
             )
             return None
     elif no_internet_connection:
-        queue.put(
-            (
-                "show_message",
-                "critical",
-                "Ошибка подключения",
-                "Вы в оффлайн-режиме. Версия отсутсвует на вашем компьютере, загрузка невозможна. Попробуйте перезапустить лаунчер.",
-            )
-        )
+        queue.put((
+            "show_message",
+            "critical",
+            "Ошибка подключения",
+            "Вы в оффлайн-режиме. Версия отсутсвует на вашем компьютере, загрузка невозможна. Попробуйте перезапустить лаунчер.",
+        ))
         queue.put(("start_button", True))
         logging.error(
             "Error message showed in install_version: cannot download version because there is not internet connection"
         )
     elif not other_info.get("do_not_install", False):
-        queue.put(
-            (
-                "show_message",
-                "critical",
-                "Ошибка",
-                "Для данной версии нет выбранного вами загрузчика модов.",
-            )
-        )
+        queue.put((
+            "show_message",
+            "critical",
+            "Ошибка",
+            "Для данной версии нет выбранного вами загрузчика модов.",
+        ))
         queue.put(("start_button", True))
         logging.error(
             f"Error message showed in install_version: mod loader {mod_loader} is not supported on the {version} version"
@@ -572,26 +548,22 @@ def download_optifine(
                     optifine_jar.write(r.content)
             logging.debug(f"Optifine installed, path: {optifine_path}")
         else:
-            queue.put(
-                (
-                    "show_message",
-                    "warning",
-                    "Запуск без optifine",
-                    "Optifine недоступен на выбранной вами версии.",
-                )
-            )
+            queue.put((
+                "show_message",
+                "warning",
+                "Запуск без optifine",
+                "Optifine недоступен на выбранной вами версии.",
+            ))
             logging.warning(
                 f"Warning message showed in download_optifine: optifine is not support on {raw_version} version"
             )
     else:
-        queue.put(
-            (
-                "show_message",
-                "warning",
-                "Ошибка optifine",
-                "Отсутсвует подключение к интернету.",
-            )
-        )
+        queue.put((
+            "show_message",
+            "warning",
+            "Ошибка optifine",
+            "Отсутсвует подключение к интернету.",
+        ))
         logging.warning(
             "Warning message showed in download_optifine: optifine error, no internet connection"
         )
@@ -708,26 +680,22 @@ def launch(
         queue.put(("status", "Игра запущена"))
         queue.put(("progressbar", 100))
         logging.debug(f"Minecraft process started on {version} version")
-        queue.put(
-            (
-                "start_rich_presence",
-                "minecraft_opened",
-                raw_version,
-                minecraft_process.pid,
-            )
-        )
+        queue.put((
+            "start_rich_presence",
+            "minecraft_opened",
+            raw_version,
+            minecraft_process.pid,
+        ))
         minecraft_return_code = minecraft_process.wait()
         if minecraft_return_code != 0:
-            queue.put(
-                (
-                    "show_message",
-                    "log",
-                    "Игра была закрыта с ошибкой",
-                    f"Minecraft вернул ошибку (крашнулся). Код ошибки: {minecraft_return_code}<br>"
-                    "Вы хотите открыть лог?",
-                    os.path.join(minecraft_directory, "logs", "latest.log"),
-                )
-            )
+            queue.put((
+                "show_message",
+                "log",
+                "Игра была закрыта с ошибкой",
+                f"Minecraft вернул ошибку (крашнулся). Код ошибки: {minecraft_return_code}<br>"
+                "Вы хотите открыть лог?",
+                os.path.join(minecraft_directory, "logs", "latest.log"),
+            ))
         queue.put(("start_rich_presence", "minecraft_closed"))
         queue.put(("status", ""))
     else:
@@ -758,12 +726,10 @@ def only_project_install(
             for chunk in r.iter_content(chunk_size=chunk_size):
                 if chunk:
                     bytes_downloaded += chunk_size
-                    queue.put(
-                        (
-                            "progressbar",
-                            min(100, int(bytes_downloaded / project_size * 100)),
-                        )
-                    )
+                    queue.put((
+                        "progressbar",
+                        min(100, int(bytes_downloaded / project_size * 100)),
+                    ))
                     queue.put(("status", f"Загрузка {project['title']}"))
                     project_file.write(chunk)
     queue_info = [

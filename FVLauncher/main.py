@@ -377,13 +377,14 @@ class ProjectsSearch(QtWidgets.QDialog):
                         download_button.setText(instance)
                         download_button.setAlignment(Qt.AlignmentFlag.AlignCenter)
                         download_button.clicked.connect(
-                            lambda *args,
-                            cur_instance=instance: self.download_project_process(
-                                self.loaders_and_files[self.loader],
-                                self.project,
-                                cur_instance,
-                                self.mc_version,
-                                self.loader,
+                            lambda *args, cur_instance=instance: (
+                                self.download_project_process(
+                                    self.loaders_and_files[self.loader],
+                                    self.project,
+                                    cur_instance,
+                                    self.mc_version,
+                                    self.loader,
+                                )
                             )
                         )
                         self.instances_layout.addWidget(download_button)
@@ -473,26 +474,28 @@ class ProjectsSearch(QtWidgets.QDialog):
 
                     if self.project["project_type"] == "modpack":
                         download_button.clicked.connect(
-                            lambda *args,
-                            current_loader=loader: self.ProjectInstallWindow.download_project_process(
-                                self,
-                                self.loaders_and_files[current_loader],
-                                self.project,
-                                None,
-                                self.mc_version,
-                                current_loader,
+                            lambda *args, current_loader=loader: (
+                                self.ProjectInstallWindow.download_project_process(
+                                    self,
+                                    self.loaders_and_files[current_loader],
+                                    self.project,
+                                    None,
+                                    self.mc_version,
+                                    current_loader,
+                                )
                             )
                         )
                     else:
                         download_button.clicked.connect(
-                            lambda *args,
-                            current_loader=loader: self.ProjectInstallWindow(
-                                self,
-                                self.project,
-                                self.mc_version,
-                                current_loader,
-                                self.minecraft_directory,
-                                self.loaders_and_files,
+                            lambda *args, current_loader=loader: (
+                                self.ProjectInstallWindow(
+                                    self,
+                                    self.project,
+                                    self.mc_version,
+                                    current_loader,
+                                    self.minecraft_directory,
+                                    self.loaders_and_files,
+                                )
                             )
                         )
                     self.loaders_layout.addWidget(download_button)
@@ -561,8 +564,13 @@ class ProjectsSearch(QtWidgets.QDialog):
             for mc_version in mc_versions[::-1]:
                 w = ClickableLabel(text=mc_version)
                 w.clicked.connect(
-                    lambda current_mc_version=mc_version: self.ProjectLoadersChooseWindow(
-                        self, self.project, current_mc_version, self.minecraft_directory
+                    lambda current_mc_version=mc_version: (
+                        self.ProjectLoadersChooseWindow(
+                            self,
+                            self.project,
+                            current_mc_version,
+                            self.minecraft_directory,
+                        )
                     )
                 )
                 self.versions_layout.addWidget(w)
@@ -1304,16 +1312,14 @@ class InstancesWindow(QtWidgets.QDialog):
                             primary_file = file
                     else:
                         primary_file = project_info["files"][0]
-                    index_dict["files"].append(
-                        {
-                            "path": os.path.relpath(
-                                project_info["path"], self.instance_path
-                            ).replace("\\", "/"),
-                            "hashes": primary_file["hashes"],
-                            "downloads": [primary_file["url"]],
-                            "fileSize": primary_file["size"],
-                        }
-                    )
+                    index_dict["files"].append({
+                        "path": os.path.relpath(
+                            project_info["path"], self.instance_path
+                        ).replace("\\", "/"),
+                        "hashes": primary_file["hashes"],
+                        "downloads": [primary_file["url"]],
+                        "fileSize": primary_file["size"],
+                    })
                 mrpack_path, _ = QtWidgets.QFileDialog.getSaveFileName(
                     self,
                     "Сохранить mrpack",
@@ -1333,7 +1339,31 @@ class InstancesWindow(QtWidgets.QDialog):
                     self, "Экспорт mrpack", f"Mrpack был сохранён по пути {mrpack_path}"
                 )
 
-            def on_off_project(self, project_id: str, on_off_button: ClickableLabel):
+            def on_off_all(self):
+                if self.on_off_all_button.text() == "Выключить все":
+                    for project in self.projects.values():
+                        if project["disabled"]:
+                            continue
+                        project_path = project["path"]
+                        dst = f"{project_path}.disabled"
+                        os.rename(project_path, dst)
+                        project["button"].setText("Включить")
+                        project["disabled"] = True
+                        project["path"] = dst
+                    self.on_off_all_button.setText("Включить все")
+                else:
+                    for project in self.projects.values():
+                        if not project["disabled"]:
+                            continue
+                        project_path = project["path"]
+                        dst = project_path.removesuffix(".disabled")
+                        os.rename(project_path, dst)
+                        project["button"].setText("Выключить")
+                        project["disabled"] = False
+                        project["path"] = dst
+                    self.on_off_all_button.setText("Выключить все")
+
+            def on_off_project(self, project_id: str):
                 project_path = self.projects[project_id]["path"]
                 disabled = self.projects[project_id]["disabled"]
                 if disabled:
@@ -1342,7 +1372,7 @@ class InstancesWindow(QtWidgets.QDialog):
                     QtWidgets.QMessageBox.information(
                         self, "Включение проекта", "Проект был успешно включен."
                     )
-                    on_off_button.setText("Выключить")
+                    self.projects[project_id]["button"].setText("Выключить")
                     self.projects[project_id]["disabled"] = False
                 else:
                     dst = f"{project_path}.disabled"
@@ -1350,7 +1380,7 @@ class InstancesWindow(QtWidgets.QDialog):
                     QtWidgets.QMessageBox.information(
                         self, "Выключение проекта", "Проект был успешно выключен."
                     )
-                    on_off_button.setText("Включить")
+                    self.projects[project_id]["button"].setText("Включить")
                     self.projects[project_id]["disabled"] = True
                 self.projects[project_id]["path"] = dst
 
@@ -1359,6 +1389,9 @@ class InstancesWindow(QtWidgets.QDialog):
                 self.setWindowTitle("Управление экземплярами")
                 self.setFixedSize(1000, 500)
                 self.projects_len = len(self.projects.items())
+
+                self.on_off_all_button = ClickableLabel(self, text="Выключить все")
+                self.on_off_all_button.clicked.connect(self.on_off_all)
 
                 for index, (project_id, project_info) in enumerate(
                     dict(
@@ -1390,9 +1423,10 @@ class InstancesWindow(QtWidgets.QDialog):
 
                     project_disabled = project_info["disabled"]
                     on_off_button = ClickableLabel(container)
+                    project_info["button"] = on_off_button
                     on_off_button.clicked.connect(
                         lambda cur_project_id=project_id,: self.on_off_project(
-                            cur_project_id, on_off_button
+                            cur_project_id
                         )
                     )
                     if project_disabled:
@@ -1420,6 +1454,7 @@ class InstancesWindow(QtWidgets.QDialog):
                 )
                 self.export_mrpack_button.clicked.connect(self.export_mrpack)
                 self.projects_layout.addWidget(self.export_mrpack_button)
+                self.projects_layout.addWidget(self.on_off_all_button)
 
                 self.progress_window.close()
                 self.show()
@@ -1543,16 +1578,16 @@ class InstancesWindow(QtWidgets.QDialog):
                         container, text="Изменить версию"
                     )
                     change_version_button.clicked.connect(
-                        lambda cur_instance_name=instance_name: self.change_instance_mc_version(
-                            cur_instance_name
+                        lambda cur_instance_name=instance_name: (
+                            self.change_instance_mc_version(cur_instance_name)
                         )
                     )
                     projects_button = ClickableLabel(
                         container, text="Управление проектами"
                     )
                     projects_button.clicked.connect(
-                        lambda cur_instance_name=instance_name: self.InstanceProjectsWindow(
-                            self, cur_instance_name
+                        lambda cur_instance_name=instance_name: (
+                            self.InstanceProjectsWindow(self, cur_instance_name)
                         )
                     )
                     projects_button.setToolTip(
