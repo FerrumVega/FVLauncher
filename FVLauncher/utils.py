@@ -33,7 +33,7 @@ class Constants:
     ELY_PROXY_URL = "https://fvlauncher.ferrumthevega.workers.dev"
     ELY_CLIENT_ID = "fvlauncherapp"
 
-    LAUNCHER_VERSION = "v8.3"
+    LAUNCHER_VERSION = "v8.4"
     USER_AGENT = Faker().user_agent()
 
 
@@ -713,7 +713,6 @@ def mod_loader_is_supported(raw_version: str, mod_loader: str):
 
 def only_project_install(
     project_version: Dict[Any, Any],
-    project: Dict[Any, Any],
     project_file_path: str,
     queue: Queue,
 ):
@@ -730,18 +729,18 @@ def only_project_install(
                         "progressbar",
                         min(100, int(bytes_downloaded / project_size * 100)),
                     ))
-                    queue.put(("status", f"Загрузка {project['title']}"))
+                    queue.put(("status", f"Загрузка {project_version['title']}"))
                     project_file.write(chunk)
     queue_info = [
         "show_message",
         "information",
         "Проект установлен",
-        f"Проект {project['title']} был успешно установлен.",
+        f"Проект {project_version['title']} был успешно установлен.",
     ]
-    if project["project_type"] == "modpack":
+    if project_version["project_type"] == "modpack":
         queue_info.append(project_file_path)
     queue.put(queue_info)
-    logging.info(f"Project {project['title']} installed")
+    logging.info(f"Project {project_version['title']} installed")
 
 
 def start_rich_presence(

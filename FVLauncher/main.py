@@ -222,118 +222,123 @@ class ProjectsSearch(QtWidgets.QDialog):
                         self.download_project_file_process.terminate()
                     return super().closeEvent(event)
 
-                def download_project_process(
+                def download_projects_process(
                     self,
-                    project_file: Dict[Any, Any],
-                    project: Dict[Any, Any],
+                    project_files: list[Dict[Any, Any]],
                     instance: Optional[str],
                     mc_version: str,
                     loader: str,
                 ):
-                    if instance:
-                        with open(
-                            os.path.join(
-                                self.minecraft_directory,
-                                "instances",
-                                instance,
-                                "instance_info.json",
-                            ),
-                            encoding="utf-8",
-                        ) as instance_info_file:
-                            instance_info = json.load(instance_info_file)
-                        with open(
-                            os.path.join(
-                                self.minecraft_directory,
-                                "versions",
-                                instance_info["mc_version"],
-                                f"{instance_info['mc_version']}.json",
-                            ),
-                            encoding="utf-8",
-                        ) as mc_version_file:
-                            inherits_from = json.load(mc_version_file).get(
-                                "inheritsFrom", instance_info["mc_version"]
-                            )
-                            if inherits_from != mc_version:
-                                if (
-                                    QtWidgets.QMessageBox.warning(
-                                        self,
-                                        "Предупреждение",
-                                        f"Версия игры экземпляра не совпадает с версией игры проекта, который вы выбрали\nВерсия игры проекта: {mc_version}\nВерсия игры сборки: {inherits_from}.\nВы уверены, что хотите установить проект на этот экземпляр?",
-                                        QtWidgets.QMessageBox.StandardButton.Yes
-                                        | QtWidgets.QMessageBox.StandardButton.No,
-                                    )
-                                    != QtWidgets.QMessageBox.StandardButton.Yes
-                                ):
-                                    return
-                            if (
-                                project["project_type"] == "mod"
-                                and loader != "datapack"
-                                and loader not in instance_info["mc_version"]
-                                and (
-                                    QtWidgets.QMessageBox.warning(
-                                        self,
-                                        "Предупреждение",
-                                        f"Вероятнее всего, вы пытаетесь установить мод на неподходящий загрузчик модов или на ванильный экземпляр.\nНазвание папки версии: {instance_info['mc_version']}\nВыбранный загрузчик модов: {loader}.\nВы уверены, что хотите установить мод на этот экземпляр?",
-                                        QtWidgets.QMessageBox.StandardButton.Yes
-                                        | QtWidgets.QMessageBox.StandardButton.No,
-                                    )
-                                    != QtWidgets.QMessageBox.StandardButton.Yes
-                                )
-                            ):
-                                return
-
-                    type_to_dir = {
-                        "mod": "mods",
-                        "resourcepack": "resourcepacks",
-                        "shader": "shaderpacks",
-                        "datapack": "datapacks",
-                        "modpack": None,
-                    }
-                    if instance:
-                        project_file_path = os.path.join(
-                            self.minecraft_directory,
-                            "instances",
-                            instance,
-                            (
-                                type_to_dir[project["project_type"]]
-                                if loader != "datapack"
-                                else type_to_dir["datapack"]
-                            ),
-                            project_file["filename"],
-                        )
-                    elif project["project_type"] != "modpack":
-                        project_file_path = os.path.join(
-                            self.minecraft_directory,
-                            (
-                                type_to_dir[project["project_type"]]
-                                if loader != "datapack"
-                                else type_to_dir["datapack"]
-                            ),
-                            project_file["filename"],
-                        )
-                    else:
-                        project_file_path = os.path.join(
-                            self.minecraft_directory, project_file["filename"]
-                        )
-                    if project["project_type"] != "modpack":
-                        os.makedirs(os.path.dirname(project_file_path), exist_ok=True)
-
+                    self.processes = []
                     self.queue = multiprocessing.Queue()
-                    self.download_project_file_process = multiprocessing.Process(
-                        target=utils.run_in_process_with_exceptions_logging,
-                        args=(
-                            utils.only_project_install,
-                            project_file,
-                            project,
-                            project_file_path,
-                        ),
-                        kwargs={"queue": self.queue},
-                        daemon=True,
-                    )
-                    self.download_project_file_process.start()
                     self.timer = QTimer()
                     self.timer.timeout.connect(lambda: update_ui_from_queue(self))
                     self.timer.start(200)
+
+                    for project_file in project_files:
+                        if instance:
+                            with open(
+                                os.path.join(
+                                    self.minecraft_directory,
+                                    "instances",
+                                    instance,
+                                    "instance_info.json",
+                                ),
+                                encoding="utf-8",
+                            ) as instance_info_file:
+                                instance_info = json.load(instance_info_file)
+                            with open(
+                                os.path.join(
+                                    self.minecraft_directory,
+                                    "versions",
+                                    instance_info["mc_version"],
+                                    f"{instance_info['mc_version']}.json",
+                                ),
+                                encoding="utf-8",
+                            ) as mc_version_file:
+                                inherits_from = json.load(mc_version_file).get(
+                                    "inheritsFrom", instance_info["mc_version"]
+                                )
+                                if inherits_from != mc_version:
+                                    if (
+                                        QtWidgets.QMessageBox.warning(
+                                            self,
+                                            "Предупреждение",
+                                            f"Версия игры экземпляра не совпадает с версией игры проекта, который вы выбрали\nВерсия игры проекта: {mc_version}\nВерсия игры сборки: {inherits_from}.\nВы уверены, что хотите установить проект на этот экземпляр?",
+                                            QtWidgets.QMessageBox.StandardButton.Yes
+                                            | QtWidgets.QMessageBox.StandardButton.No,
+                                        )
+                                        != QtWidgets.QMessageBox.StandardButton.Yes
+                                    ):
+                                        return
+                                if (
+                                    project_file["project_type"] == "mod"
+                                    and loader != "datapack"
+                                    and loader not in instance_info["mc_version"]
+                                    and (
+                                        QtWidgets.QMessageBox.warning(
+                                            self,
+                                            "Предупреждение",
+                                            f"Вероятнее всего, вы пытаетесь установить мод на неподходящий загрузчик модов или на ванильный экземпляр.\nНазвание папки версии: {instance_info['mc_version']}\nВыбранный загрузчик модов: {loader}.\nВы уверены, что хотите установить мод на этот экземпляр?",
+                                            QtWidgets.QMessageBox.StandardButton.Yes
+                                            | QtWidgets.QMessageBox.StandardButton.No,
+                                        )
+                                        != QtWidgets.QMessageBox.StandardButton.Yes
+                                    )
+                                ):
+                                    return
+
+                        type_to_dir = {
+                            "mod": "mods",
+                            "resourcepack": "resourcepacks",
+                            "shader": "shaderpacks",
+                            "datapack": "datapacks",
+                            "modpack": None,
+                        }
+                        if instance:
+                            project_file_path = os.path.join(
+                                self.minecraft_directory,
+                                "instances",
+                                instance,
+                                (
+                                    type_to_dir[project_file["project_type"]]
+                                    if loader != "datapack"
+                                    else type_to_dir["datapack"]
+                                ),
+                                project_file["filename"],
+                            )
+                        elif project_file["project_type"] != "modpack":
+                            project_file_path = os.path.join(
+                                self.minecraft_directory,
+                                (
+                                    type_to_dir[project_file["project_type"]]
+                                    if loader != "datapack"
+                                    else type_to_dir["datapack"]
+                                ),
+                                project_file["filename"],
+                            )
+                        else:
+                            project_file_path = os.path.join(
+                                self.minecraft_directory, project_file["filename"]
+                            )
+                        if project_file["project_type"] != "modpack":
+                            os.makedirs(
+                                os.path.dirname(project_file_path), exist_ok=True
+                            )
+
+                        self.processes.append(
+                            multiprocessing.Process(
+                                target=utils.run_in_process_with_exceptions_logging,
+                                args=(
+                                    utils.only_project_install,
+                                    project_file,
+                                    project_file_path,
+                                ),
+                                kwargs={"queue": self.queue},
+                                daemon=True,
+                            )
+                        )
+                        self.processes[-1].start()
 
                 def _make_ui(self):
                     instances = []
@@ -378,9 +383,8 @@ class ProjectsSearch(QtWidgets.QDialog):
                         download_button.setAlignment(Qt.AlignmentFlag.AlignCenter)
                         download_button.clicked.connect(
                             lambda *args, cur_instance=instance: (
-                                self.download_project_process(
+                                self.download_projects_process(
                                     self.loaders_and_files[self.loader],
-                                    self.project,
                                     cur_instance,
                                     self.mc_version,
                                     self.loader,
@@ -391,9 +395,8 @@ class ProjectsSearch(QtWidgets.QDialog):
                     download_button = ClickableLabel(self)
                     download_button.setText("В корень (без сборки)")
                     download_button.clicked.connect(
-                        lambda *args, cur_instance="": self.download_project_process(
+                        lambda *args, cur_instance="": self.download_projects_process(
                             self.loaders_and_files[self.loader],
-                            self.project,
                             cur_instance,
                             self.mc_version,
                             self.loader,
@@ -424,6 +427,73 @@ class ProjectsSearch(QtWidgets.QDialog):
                     self.download_project_file_process.terminate()
                 return super().closeEvent(event)
 
+            def find_file(
+                self,
+                project_versions_info,
+                title,
+                project_type,
+                is_dependencies=False,
+            ):
+                for project_version in project_versions_info:
+                    for loader in project_version["loaders"]:
+                        if loader not in self.loaders_and_files or is_dependencies:
+                            self.loaders_and_files.setdefault(loader, [])
+                            for file in project_version["files"]:
+                                file["title"] = title
+                                file["project_type"] = project_type
+                                if file["primary"]:
+                                    self.loaders_and_files[loader].append(file)
+                                    break
+                            else:
+                                project_version["files"][0]["title"] = title
+                                project_version["files"][0]["project_type"] = (
+                                    project_type
+                                )
+                                self.loaders_and_files[loader].append(
+                                    project_version["files"][0]
+                                )
+
+                            for file in project_version["dependencies"]:
+                                if file["dependency_type"] != "required":
+                                    continue
+                                if file.get("version_id") is not None:
+                                    with requests.get(
+                                        f"https://api.modrinth.com/v2/version/{file['version_id']}",
+                                        timeout=10,
+                                    ) as r:
+                                        project_id = r.json()["project_id"]
+                                        with requests.get(
+                                            f"https://api.modrinth.com/v2/project/{project_id}",
+                                            timeout=10,
+                                        ) as r1:
+                                            self.find_file(
+                                                r.json(),
+                                                r1.json()["title"],
+                                                r1.json()["project_type"],
+                                                is_dependencies=True,
+                                            )
+                                elif file.get("project_id") is not None:
+                                    with requests.get(
+                                        f"https://api.modrinth.com/v2/project/{file['project_id']}/version",
+                                        params={
+                                            "game_versions": json.dumps([
+                                                self.mc_version
+                                            ]),
+                                            "loaders": json.dumps([loader]),
+                                        },
+                                        timeout=10,
+                                    ) as r:
+                                        with requests.get(
+                                            f"https://api.modrinth.com/v2/project/{file['project_id']}",
+                                            timeout=10,
+                                        ) as r1:
+                                            self.find_file(
+                                                [r.json()[0]],
+                                                r1.json()["title"],
+                                                r1.json()["project_type"],
+                                                is_dependencies=True,
+                                            )
+
             def _make_ui(self):
                 self.setModal(True)
                 self.setWindowTitle(f"Загрузка {self.project['title']}")
@@ -435,19 +505,14 @@ class ProjectsSearch(QtWidgets.QDialog):
                     timeout=10,
                 ) as r:
                     r.raise_for_status()
-                    self.project_versions_info = json.loads(r.text)
+                    project_versions_info = r.json()
+
                 self.loaders_and_files = {}
-                for project_version in self.project_versions_info:
-                    for loader in project_version["loaders"]:
-                        if loader not in self.loaders_and_files:
-                            for file in project_version["files"]:
-                                if file["primary"]:
-                                    self.loaders_and_files[loader] = file
-                                    break
-                            else:
-                                self.loaders_and_files[loader] = project_version[
-                                    "files"
-                                ][0]
+                self.find_file(
+                    project_versions_info,
+                    self.project["title"],
+                    self.project["project_type"],
+                )
 
                 self.loaders_container = QtWidgets.QWidget()
                 self.loaders_layout = QtWidgets.QVBoxLayout(self.loaders_container)
@@ -475,10 +540,9 @@ class ProjectsSearch(QtWidgets.QDialog):
                     if self.project["project_type"] == "modpack":
                         download_button.clicked.connect(
                             lambda *args, current_loader=loader: (
-                                self.ProjectInstallWindow.download_project_process(
+                                self.ProjectInstallWindow.download_projects_process(
                                     self,
                                     self.loaders_and_files[current_loader],
-                                    self.project,
                                     None,
                                     self.mc_version,
                                     current_loader,
@@ -1453,8 +1517,8 @@ class InstancesWindow(QtWidgets.QDialog):
                     self, text="Экспорт в .mrpack"
                 )
                 self.export_mrpack_button.clicked.connect(self.export_mrpack)
-                self.projects_layout.addWidget(self.export_mrpack_button)
                 self.projects_layout.addWidget(self.on_off_all_button)
+                self.projects_layout.addWidget(self.export_mrpack_button)
 
                 self.progress_window.close()
                 self.show()
