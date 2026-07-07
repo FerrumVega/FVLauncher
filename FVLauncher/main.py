@@ -432,8 +432,14 @@ class ProjectsSearch(QtWidgets.QDialog):
                 project_versions_info,
                 title,
                 project_type,
+                project_id,
                 is_dependencies=False,
             ):
+                if is_dependencies and project_id in self.processed_projects:
+                    return
+
+                self.processed_projects.add(project_id)
+
                 for project_version in project_versions_info:
                     for loader in project_version["loaders"]:
                         if loader not in self.loaders_and_files or is_dependencies:
@@ -470,6 +476,7 @@ class ProjectsSearch(QtWidgets.QDialog):
                                                 r.json(),
                                                 r1.json()["title"],
                                                 r1.json()["project_type"],
+                                                project_id,
                                                 is_dependencies=True,
                                             )
                                 elif file.get("project_id") is not None:
@@ -487,12 +494,16 @@ class ProjectsSearch(QtWidgets.QDialog):
                                             f"https://api.modrinth.com/v2/project/{file['project_id']}",
                                             timeout=10,
                                         ) as r1:
-                                            self.find_file(
-                                                [r.json()[0]],
-                                                r1.json()["title"],
-                                                r1.json()["project_type"],
-                                                is_dependencies=True,
-                                            )
+                                            try:
+                                                self.find_file(
+                                                    [r.json()[0]],
+                                                    r1.json()["title"],
+                                                    r1.json()["project_type"],
+                                                    file["project_id"],
+                                                    is_dependencies=True,
+                                                )
+                                            except IndexError:
+                                                pass
 
             def _make_ui(self):
                 self.setModal(True)
@@ -508,10 +519,12 @@ class ProjectsSearch(QtWidgets.QDialog):
                     project_versions_info = r.json()
 
                 self.loaders_and_files = {}
+                self.processed_projects = set()
                 self.find_file(
                     project_versions_info,
                     self.project["title"],
                     self.project["project_type"],
+                    self.project["project_id"],
                 )
 
                 self.loaders_container = QtWidgets.QWidget()
