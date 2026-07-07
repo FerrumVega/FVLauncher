@@ -236,6 +236,17 @@ class ProjectsSearch(QtWidgets.QDialog):
                     self.timer.start(200)
 
                     for project_file in project_files:
+                        if not (project_file["primary_project"]):
+                            reply = QtWidgets.QMessageBox.warning(
+                                self,
+                                "Зависимость",
+                                f"Скачать обязательную зависимость {project_file['title']}?",
+                                QtWidgets.QMessageBox.StandardButton.Yes
+                                | QtWidgets.QMessageBox.StandardButton.No,
+                            )
+
+                            if reply != QtWidgets.QMessageBox.StandardButton.Yes:
+                                continue
                         if instance:
                             with open(
                                 os.path.join(
@@ -447,6 +458,10 @@ class ProjectsSearch(QtWidgets.QDialog):
                             for file in project_version["files"]:
                                 file["title"] = title
                                 file["project_type"] = project_type
+                                if not is_dependencies:
+                                    file["primary_project"] = True
+                                else:
+                                    file["primary_project"] = False
                                 if file["primary"]:
                                     self.loaders_and_files[loader].append(file)
                                     break

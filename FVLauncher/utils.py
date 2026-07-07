@@ -33,7 +33,7 @@ class Constants:
     ELY_PROXY_URL = "https://fvlauncher.ferrumthevega.workers.dev"
     ELY_CLIENT_ID = "fvlauncherapp"
 
-    LAUNCHER_VERSION = "v8.4.1"
+    LAUNCHER_VERSION = "v8.4.2"
     USER_AGENT = Faker().user_agent()
 
 
