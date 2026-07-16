@@ -218,8 +218,11 @@ class ProjectsSearch(QtWidgets.QDialog):
                     return super().reject()
 
                 def closeEvent(self, event: QtGui.QCloseEvent):
-                    for p in self.processes:
-                        p.terminate()
+                    try:
+                        for p in self.processes:
+                            p.terminate()
+                    except AttributeError:
+                        pass
                     return super().closeEvent(event)
 
                 def download_projects_process(
@@ -451,7 +454,11 @@ class ProjectsSearch(QtWidgets.QDialog):
 
                 for project_version in project_versions_info:
                     for loader in project_version["loaders"]:
-                        if loader not in self.loaders_and_files or is_dependencies:
+                        if (
+                            (loader not in self.loaders_and_files) or is_dependencies
+                        ) or not any(
+                            f["title"] == title for f in self.loaders_and_files[loader]
+                        ):
                             self.loaders_and_files.setdefault(loader, [])
                             for file in project_version["files"]:
                                 file["title"] = title
@@ -486,7 +493,7 @@ class ProjectsSearch(QtWidgets.QDialog):
                                             timeout=10,
                                         ) as r1:
                                             self.find_file(
-                                                r.json(),
+                                                [r.json()],
                                                 r1.json()["title"],
                                                 r1.json()["project_type"],
                                                 project_id,
