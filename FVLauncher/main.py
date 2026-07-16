@@ -218,8 +218,8 @@ class ProjectsSearch(QtWidgets.QDialog):
                     return super().reject()
 
                 def closeEvent(self, event: QtGui.QCloseEvent):
-                    if hasattr(self, "download_project_file_process"):
-                        self.download_project_file_process.terminate()
+                    for p in self.processes:
+                        p.terminate()
                     return super().closeEvent(event)
 
                 def download_projects_process(
@@ -434,8 +434,6 @@ class ProjectsSearch(QtWidgets.QDialog):
             def closeEvent(self, event: QtGui.QCloseEvent):
                 if hasattr(self, "import_mrpack_process"):
                     self.import_mrpack_process.terminate()
-                if hasattr(self, "download_project_file_process"):
-                    self.download_project_file_process.terminate()
                 return super().closeEvent(event)
 
             def find_file(
@@ -1415,9 +1413,11 @@ class InstancesWindow(QtWidgets.QDialog):
                 mrpack_path, _ = QtWidgets.QFileDialog.getSaveFileName(
                     self,
                     "Сохранить mrpack",
-                    "",
+                    f"{NAME}.mrpack",
                     "MRPACK Files (*.mrpack);;All Files (*)",
                 )
+                if not mrpack_path:
+                    return
                 with zipfile.ZipFile(mrpack_path, "w", zipfile.ZIP_DEFLATED) as zf:
                     zf.writestr("modrinth.index.json", json.dumps(index_dict, indent=4))
                     for path in overrides_paths:
@@ -1478,7 +1478,7 @@ class InstancesWindow(QtWidgets.QDialog):
 
             def _make_ui(self):
                 self.setModal(True)
-                self.setWindowTitle("Управление экземплярами")
+                self.setWindowTitle("Управление проектами")
                 self.setFixedSize(1000, 500)
                 self.projects_len = len(self.projects.items())
 
