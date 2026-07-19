@@ -454,14 +454,14 @@ class ProjectsSearch(QtWidgets.QDialog):
 
                 for project_version in project_versions_info:
                     for loader in project_version["loaders"]:
-                        if (
-                            (loader not in self.loaders_and_files) or is_dependencies
-                        ) or not any(
-                            f["title"] == title for f in self.loaders_and_files[loader]
+                        if (loader not in self.loaders_and_files) or not any(
+                            f["project_id"] == project_id
+                            for f in self.loaders_and_files[loader]
                         ):
                             self.loaders_and_files.setdefault(loader, [])
                             for file in project_version["files"]:
                                 file["title"] = title
+                                file["project_id"] = project_id
                                 file["project_type"] = project_type
                                 if not is_dependencies:
                                     file["primary_project"] = True
@@ -472,6 +472,7 @@ class ProjectsSearch(QtWidgets.QDialog):
                                     break
                             else:
                                 project_version["files"][0]["title"] = title
+                                project_version["files"][0]["project_id"] = project_id
                                 project_version["files"][0]["project_type"] = (
                                     project_type
                                 )
@@ -487,16 +488,16 @@ class ProjectsSearch(QtWidgets.QDialog):
                                         f"https://api.modrinth.com/v2/version/{file['version_id']}",
                                         timeout=10,
                                     ) as r:
-                                        project_id = r.json()["project_id"]
+                                        dependency_project_id = r.json()["project_id"]
                                         with requests.get(
-                                            f"https://api.modrinth.com/v2/project/{project_id}",
+                                            f"https://api.modrinth.com/v2/project/{dependency_project_id}",
                                             timeout=10,
                                         ) as r1:
                                             self.find_file(
                                                 [r.json()],
                                                 r1.json()["title"],
                                                 r1.json()["project_type"],
-                                                project_id,
+                                                dependency_project_id,
                                                 is_dependencies=True,
                                             )
                                 elif file.get("project_id") is not None:
