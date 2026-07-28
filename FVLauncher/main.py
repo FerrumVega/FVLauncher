@@ -73,6 +73,7 @@ def load_config():
         "Experiments": {
             "allow_experiments": "0",
             "hover_color": "",
+            "skip_optional_mods": "0",
         },
     }
 
@@ -241,10 +242,21 @@ class ProjectsSearch(QtWidgets.QDialog):
 
                     for project_file in project_files:
                         if not (project_file["primary_project"]):
+                            dependencies_types = {
+                                "required": "обязательную ",
+                                "optional": "опциональную ",
+                                None: "",
+                            }
+                            if (
+                                project_file["dependency_type"] == "optional"
+                                and main_window.allow_experiments
+                                and main_window.skip_optional_mods
+                            ):
+                                continue
                             reply = QtWidgets.QMessageBox.warning(
                                 self,
                                 "Зависимость",
-                                f"Скачать обязательную зависимость {project_file['title']}?",
+                                f"Скачать {dependencies_types[project_file['dependency_type']]}зависимость {project_file['title']}?",
                                 QtWidgets.QMessageBox.StandardButton.Yes
                                 | QtWidgets.QMessageBox.StandardButton.No,
                             )
@@ -445,6 +457,7 @@ class ProjectsSearch(QtWidgets.QDialog):
                 title,
                 project_type,
                 project_id,
+                dependency_type=None,
                 is_dependencies=False,
             ):
                 if is_dependencies and project_id in self.processed_projects:
@@ -479,9 +492,14 @@ class ProjectsSearch(QtWidgets.QDialog):
                                 self.loaders_and_files[loader].append(
                                     project_version["files"][0]
                                 )
+                            file["dependency_type"] = dependency_type
 
                             for file in project_version["dependencies"]:
-                                if file["dependency_type"] != "required":
+                                dependency_type = file.get("dependency_type")
+                                if dependency_type in [
+                                    "incompatible",
+                                    "embedded",
+                                ]:
                                     continue
                                 if file.get("version_id") is not None:
                                     with requests.get(
@@ -498,6 +516,7 @@ class ProjectsSearch(QtWidgets.QDialog):
                                                 r1.json()["title"],
                                                 r1.json()["project_type"],
                                                 dependency_project_id,
+                                                file["dependency_type"],
                                                 is_dependencies=True,
                                             )
                                 elif file.get("project_id") is not None:
@@ -523,6 +542,7 @@ class ProjectsSearch(QtWidgets.QDialog):
                                                 r1.json()["title"],
                                                 r1.json()["project_type"],
                                                 file["project_id"],
+                                                file["dependency_type"],
                                                 is_dependencies=True,
                                             )
                                         except IndexError:
@@ -1851,6 +1871,7 @@ class MainWindow(QtWidgets.QMainWindow):
         saved_minecraft_directory: str,
         allow_experiments: str,
         hover_color: str,
+        skip_optional_mods: str,
     ):
         self.chosen_version = chosen_version
         self.chosen_mod_loader = chosen_mod_loader
@@ -1872,6 +1893,7 @@ class MainWindow(QtWidgets.QMainWindow):
         self.saved_minecraft_directory = saved_minecraft_directory
         self.allow_experiments = allow_experiments
         self.hover_color = hover_color
+        self.skip_optional_mods = skip_optional_mods
 
         super().__init__()
         if self.check_java():
@@ -1975,6 +1997,7 @@ class MainWindow(QtWidgets.QMainWindow):
             "Experiments": {
                 "allow_experiments": int(self.allow_experiments),
                 "hover_color": self.hover_color,
+                "skip_optional_mods": self.skip_optional_mods,
             },
         }
 
@@ -2191,6 +2214,7 @@ class MainWindow(QtWidgets.QMainWindow):
 
         self.allow_experiments = int(self.allow_experiments)
         self.hover_color = self.hover_color
+        self.skip_optional_mods = int(self.skip_optional_mods)
 
         self.start_button_type = "Start"
 
@@ -2381,6 +2405,7 @@ if __name__ == "__main__":
         config["Settings"]["minecraft_directory"],
         config["Experiments"]["allow_experiments"],
         config["Experiments"]["hover_color"],
+        config["Experiments"]["skip_optional_mods"],
     )
     browser_instance = QtWebEngineCore.QWebEngineProfile("FVLauncher")
     sys.exit(utils.app.exec())
