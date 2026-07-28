@@ -1,4 +1,3 @@
-import json
 import subprocess
 import tempfile
 
@@ -11,7 +10,7 @@ def is_new_version_released(current_version):
         "https://api.github.com/repos/FerrumVega/FVLauncher/releases/latest", timeout=10
     ) as r:
         r.raise_for_status()
-        last_version = json.loads(r.content)["tag_name"]
+        last_version = r.json()["tag_name"]
     last_version_tuple = tuple(int(t) for t in last_version[1:].split("."))
     return last_version_tuple > current_version_tuple
 

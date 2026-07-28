@@ -1273,6 +1273,11 @@ class InstancesWindow(QtWidgets.QDialog):
                     return super().closeEvent(event)
 
             def __init__(self, parent, instance_name: str):
+                if utils.app.keyboardModifiers() & Qt.KeyboardModifier.ShiftModifier:
+                    load_icons = False
+                else:
+                    load_icons = True
+
                 super().__init__(parent)
                 self.instance_name = instance_name
                 self.instance_path = os.path.join(
@@ -1296,6 +1301,7 @@ class InstancesWindow(QtWidgets.QDialog):
                         utils.search_projects,
                         main_window.minecraft_directory,
                         self.instance_name,
+                        load_icons,
                     ),
                     kwargs={"queue": self.queue},
                     daemon=True,

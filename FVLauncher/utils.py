@@ -50,7 +50,9 @@ window_icon = QtGui.QIcon(
 )
 
 
-def search_projects(minecraft_directory: str, instance_name: str, queue: Queue):
+def search_projects(
+    minecraft_directory: str, instance_name: str, load_icons: bool, queue: Queue
+):
     queue.put(("status", "Вычиление хэшей"))
     hashes_and_paths = {}
     instance_path = os.path.join(minecraft_directory, "instances", instance_name)
@@ -101,7 +103,7 @@ def search_projects(minecraft_directory: str, instance_name: str, queue: Queue):
             projects[project_id]["disabled"] = projects[project_id]["path"].endswith(
                 ".disabled"
             )
-            if (icon_url := project_info.get("icon_url")) is not None:
+            if load_icons and (icon_url := project_info.get("icon_url")) is not None:
                 with requests.get(icon_url, timeout=10) as r:
                     r.raise_for_status()
                     projects[project_id]["icon_bytes"] = r.content
