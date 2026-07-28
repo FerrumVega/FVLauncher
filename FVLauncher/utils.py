@@ -100,6 +100,7 @@ def search_projects(
             project_name = project_info["title"]
             project_id = project_info["id"]
             projects[project_id]["title"] = project_name
+            projects[project_id]["project_type"] = project_info["project_type"]
             projects[project_id]["disabled"] = projects[project_id]["path"].endswith(
                 ".disabled"
             )

@@ -608,12 +608,6 @@ class ProjectsSearch(QtWidgets.QDialog):
             super().__init__(parent)
             self.minecraft_directory = minecraft_directory
             self.project = project
-            self.type_to_russian_name = {
-                "mod": "мод",
-                "resourcepack": "ресурспак",
-                "modpack": "сборка",
-                "shader": "шейдер",
-            }
             self._make_ui()
 
         def _make_ui(self):
@@ -625,7 +619,7 @@ class ProjectsSearch(QtWidgets.QDialog):
             self.project_title.move(20, 20)
             self.downloads = f"{self.project['downloads']:_}".replace("_", " ")
             self.project_title.setText(
-                f"{self.project['title']} ({self.type_to_russian_name.get(self.project['project_type'], 'проект').capitalize()} с {self.downloads} скачиваниями)"
+                f"{self.project['title']} ({type_to_russian_name.get(self.project['project_type'], 'проект').capitalize()} с {self.downloads} скачиваниями)"
             )
             self.project_title.setAlignment(Qt.AlignmentFlag.AlignCenter)
             self.project_title.setFixedWidth(260)
@@ -1512,6 +1506,7 @@ class InstancesWindow(QtWidgets.QDialog):
                     1,
                 ):
                     project_name = project_info["title"]
+                    project_type = project_info["project_type"]
 
                     container = QtWidgets.QWidget()
                     h_layout = QtWidgets.QHBoxLayout(container)
@@ -1528,7 +1523,10 @@ class InstancesWindow(QtWidgets.QDialog):
                         self.progressbar.setValue(index / self.projects_len * 100)
                         h_layout.addWidget(project_icon)
 
-                    project_name_label = QtWidgets.QLabel(container, text=project_name)
+                    project_name_label = QtWidgets.QLabel(
+                        container,
+                        text=f"{project_name} ({type_to_russian_name[project_type]})",
+                    )
 
                     project_disabled = project_info["disabled"]
                     on_off_button = ClickableLabel(container)
@@ -2348,6 +2346,12 @@ class MainWindow(QtWidgets.QMainWindow):
 
 
 if __name__ == "__main__":
+    type_to_russian_name = {
+        "mod": "мод",
+        "resourcepack": "ресурспак",
+        "modpack": "сборка",
+        "shader": "шейдер",
+    }
     multiprocessing.freeze_support()
     open("FVLauncher.log", "w").close()
     logging.getLogger("requests").setLevel(logging.WARNING)
