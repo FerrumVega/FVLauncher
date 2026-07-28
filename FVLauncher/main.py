@@ -1,25 +1,25 @@
-import minecraft_launcher_lib
-from PySide6 import QtWidgets, QtGui, QtWebEngineWidgets, QtWebEngineCore
-from PySide6.QtCore import Signal, Qt, QTimer, QUrl, QUrlQuery
-import os
-import sys
-import requests
 import configparser
 import json
-from pypresence.presence import Presence
-import pypresence.exceptions
 import logging
 import multiprocessing
-import zipfile
-from faker import Faker
-from typing import Dict, Union, Any, Optional
-import traceback
-from minecraft_launcher_lib.exceptions import AccountNotOwnMinecraft
-import time
+import os
 import shutil
+import sys
+import time
+import traceback
+import zipfile
+from typing import Any
 
-import utils
+import minecraft_launcher_lib
+import pypresence.exceptions
+import requests
 import updater
+import utils
+from faker import Faker
+from minecraft_launcher_lib.exceptions import AccountNotOwnMinecraft
+from pypresence.presence import Presence
+from PySide6 import QtGui, QtWebEngineCore, QtWebEngineWidgets, QtWidgets
+from PySide6.QtCore import Qt, QTimer, QUrl, QUrlQuery, Signal
 
 logging.basicConfig(
     level=logging.DEBUG,
@@ -27,10 +27,11 @@ logging.basicConfig(
     filemode="a",
     format="%(asctime)s %(levelname)s %(message)s",
 )
+logger = logging.getLogger(__name__)
 
 
 def log_exception(exception_info: str):
-    logging.critical(f"There was an error:\n{exception_info}")
+    logger.critical(f"There was an error:\n{exception_info}")
     QtWidgets.QMessageBox.critical(
         utils.app.activeWindow(),
         "Ошибка",
@@ -39,7 +40,7 @@ def log_exception(exception_info: str):
 
 
 sys.excepthook = lambda exception_type, exception, exception_traceback: log_exception(
-    "".join(traceback.format_exception(exception_type, exception, exception_traceback))
+    "".join(traceback.format_exception(exception))
 )
 
 
@@ -199,11 +200,11 @@ class ProjectsSearch(QtWidgets.QDialog):
                 def __init__(
                     self,
                     parent: QtWidgets.QWidget,
-                    project: Dict[Any, Any],
+                    project: dict[Any, Any],
                     mc_version: str,
                     loader: str,
                     minecraft_directory: str,
-                    loaders_and_files: Dict[str, Dict],
+                    loaders_and_files: dict[str, dict],
                 ):
                     super().__init__(parent)
                     self.project = project
@@ -227,8 +228,8 @@ class ProjectsSearch(QtWidgets.QDialog):
 
                 def download_projects_process(
                     self,
-                    project_files: list[Dict[Any, Any]],
-                    instance: Optional[str],
+                    project_files: list[dict[Any, Any]],
+                    instance: str | None,
                     mc_version: str,
                     loader: str,
                 ):
@@ -273,18 +274,17 @@ class ProjectsSearch(QtWidgets.QDialog):
                                 inherits_from = json.load(mc_version_file).get(
                                     "inheritsFrom", instance_info["mc_version"]
                                 )
-                                if inherits_from != mc_version:
-                                    if (
-                                        QtWidgets.QMessageBox.warning(
-                                            self,
-                                            "Предупреждение",
-                                            f"Версия игры экземпляра не совпадает с версией игры проекта, который вы выбрали\nВерсия игры проекта: {mc_version}\nВерсия игры сборки: {inherits_from}.\nВы уверены, что хотите установить проект на этот экземпляр?",
-                                            QtWidgets.QMessageBox.StandardButton.Yes
-                                            | QtWidgets.QMessageBox.StandardButton.No,
-                                        )
-                                        != QtWidgets.QMessageBox.StandardButton.Yes
-                                    ):
-                                        return
+                                if inherits_from != mc_version and (
+                                    QtWidgets.QMessageBox.warning(
+                                        self,
+                                        "Предупреждение",
+                                        f"Версия игры экземпляра не совпадает с версией игры проекта, который вы выбрали\nВерсия игры проекта: {mc_version}\nВерсия игры сборки: {inherits_from}.\nВы уверены, что хотите установить проект на этот экземпляр?",
+                                        QtWidgets.QMessageBox.StandardButton.Yes
+                                        | QtWidgets.QMessageBox.StandardButton.No,
+                                    )
+                                    != QtWidgets.QMessageBox.StandardButton.Yes
+                                ):
+                                    return
                                 if (
                                     project_file["project_type"] == "mod"
                                     and loader != "datapack"
@@ -424,7 +424,7 @@ class ProjectsSearch(QtWidgets.QDialog):
             def __init__(
                 self,
                 parent: QtWidgets.QWidget,
-                project: Dict[Any, Any],
+                project: dict[Any, Any],
                 mc_version: str,
                 minecraft_directory: str,
             ):
@@ -501,30 +501,32 @@ class ProjectsSearch(QtWidgets.QDialog):
                                                 is_dependencies=True,
                                             )
                                 elif file.get("project_id") is not None:
-                                    with requests.get(
-                                        f"https://api.modrinth.com/v2/project/{file['project_id']}/version",
-                                        params={
-                                            "game_versions": json.dumps([
-                                                self.mc_version
-                                            ]),
-                                            "loaders": json.dumps([loader]),
-                                        },
-                                        timeout=10,
-                                    ) as r:
-                                        with requests.get(
+                                    with (
+                                        requests.get(
+                                            f"https://api.modrinth.com/v2/project/{file['project_id']}/version",
+                                            params={
+                                                "game_versions": json.dumps([
+                                                    self.mc_version
+                                                ]),
+                                                "loaders": json.dumps([loader]),
+                                            },
+                                            timeout=10,
+                                        ) as r,
+                                        requests.get(
                                             f"https://api.modrinth.com/v2/project/{file['project_id']}",
                                             timeout=10,
-                                        ) as r1:
-                                            try:
-                                                self.find_file(
-                                                    [r.json()[0]],
-                                                    r1.json()["title"],
-                                                    r1.json()["project_type"],
-                                                    file["project_id"],
-                                                    is_dependencies=True,
-                                                )
-                                            except IndexError:
-                                                pass
+                                        ) as r1,
+                                    ):
+                                        try:
+                                            self.find_file(
+                                                [r.json()[0]],
+                                                r1.json()["title"],
+                                                r1.json()["project_type"],
+                                                file["project_id"],
+                                                is_dependencies=True,
+                                            )
+                                        except IndexError:
+                                            pass
 
             def _make_ui(self):
                 self.setModal(True)
@@ -601,7 +603,7 @@ class ProjectsSearch(QtWidgets.QDialog):
                 self.show()
 
         def __init__(
-            self, parent: QtWidgets.QWidget, project: Dict, minecraft_directory: str
+            self, parent: QtWidgets.QWidget, project: dict, minecraft_directory: str
         ):
             super().__init__(parent)
             self.minecraft_directory = minecraft_directory
@@ -979,7 +981,7 @@ class AccountWindow(QtWidgets.QDialog):
                             "Ошибка входа",
                             "Вероятнее всего, вы не владеете игрой. Использование этого аккаунта невозможно",
                         )
-                        logging.debug(
+                        logger.debug(
                             "Failed login using Microsoft account (AccountNotOwnMinecraft exception)"
                         )
                 elif account_type == "Ely.by":
@@ -1006,7 +1008,7 @@ class AccountWindow(QtWidgets.QDialog):
                     nickname = full_login_info["username"]
                     successful_login = True
                 if successful_login:
-                    logging.debug(f"Successful login using {account_type} account")
+                    logger.debug(f"Successful login using {account_type} account")
                     main_window.launch_account_type = launch_account_type
                     main_window.access_token = access_token
                     main_window.token_expires_at = token_expires_at
@@ -1177,7 +1179,7 @@ class InstancesWindow(QtWidgets.QDialog):
                         "Создание экземпляра",
                         f"Папка экземпляра успешно создана по пути {instance_path}",
                     )
-                    logging.info(f"New instance created, path: {instance_path}")
+                    logger.debug(f"New instance created, path: {instance_path}")
                 elif not version_installed:
                     QtWidgets.QMessageBox.critical(
                         self,
@@ -1404,10 +1406,11 @@ class InstancesWindow(QtWidgets.QDialog):
                         raw_version = mc_version
                     index_dict["dependencies"]["minecraft"] = raw_version
 
-                for project_id, project_info in self.projects.items():
+                for project_info in self.projects.values():
                     for file in project_info["files"]:
                         if file["primary"]:
                             primary_file = file
+                            break
                     else:
                         primary_file = project_info["files"][0]
                     index_dict["files"].append({
@@ -1817,7 +1820,7 @@ class MainWindow(QtWidgets.QMainWindow):
                 "Java не найдена",
                 "На вашем компьютере отсутствует java, загрузите её с github лаунчера.",
             )
-            logging.error("Error message showed while java checking: java not found")
+            logger.error("Error message showed while java checking: java not found")
             return False
         else:
             return True
@@ -1868,7 +1871,7 @@ class MainWindow(QtWidgets.QMainWindow):
 
         super().__init__()
         if self.check_java():
-            logging.debug(f"Java path: {self.java_path}")
+            logger.debug(f"Java path: {self.java_path}")
             self.save_config_on_close = True
             self._make_ui()
         else:
@@ -1882,30 +1885,33 @@ class MainWindow(QtWidgets.QMainWindow):
             self.raw_version = self.versions_combobox.currentText()
             self.nickname = self.nickname_entry.text()
             self.save_config()
-        logging.debug("Launcher was closed")
+        logger.debug("Launcher was closed")
         return super().closeEvent(event)
 
     def show_versions(
         self,
         main_window: QtWidgets.QWidget,
-        show_old_alphas: Union[bool, int],
-        show_old_betas: Union[bool, int],
-        show_snapshots: Union[bool, int],
-        show_releases: Union[bool, int],
-        other_versions: Union[bool, int],
-        instances_and_packs: Union[bool, int],
+        show_old_alphas: bool | int,
+        show_old_betas: bool | int,
+        show_snapshots: bool | int,
+        show_releases: bool | int,
+        other_versions: bool | int,
+        instances_and_packs: bool | int,
         current_version: str,
     ):
         versions_names_list = []
         try:
             for version in minecraft_launcher_lib.utils.get_version_list():
-                if version["type"] == "old_alpha" and show_old_alphas:
-                    versions_names_list.append(version["id"])
-                elif version["type"] == "old_beta" and show_old_betas:
-                    versions_names_list.append(version["id"])
-                elif version["type"] == "snapshot" and show_snapshots:
-                    versions_names_list.append(version["id"])
-                elif version["type"] == "release" and show_releases:
+                if (
+                    version["type"] == "old_alpha"
+                    and show_old_alphas
+                    or version["type"] == "old_beta"
+                    and show_old_betas
+                    or version["type"] == "snapshot"
+                    and show_snapshots
+                    or version["type"] == "release"
+                    and show_releases
+                ):
                     versions_names_list.append(version["id"])
             if other_versions:
                 for item in minecraft_launcher_lib.utils.get_installed_versions(
@@ -2069,7 +2075,7 @@ class MainWindow(QtWidgets.QMainWindow):
                             )
                             self.auth_info = True, self.launch_account_type
                             self.nickname_entry.setReadOnly(True)
-                            logging.debug(
+                            logger.debug(
                                 "Successful login using Microsoft account (auto_login)"
                             )
                             return (
@@ -2080,7 +2086,7 @@ class MainWindow(QtWidgets.QMainWindow):
                             )
                         except (KeyError, AccountNotOwnMinecraft) as e:
                             self.auth_info = False, None
-                            logging.debug(
+                            logger.debug(
                                 f"Failed login using Microsoft account ({e} exception) (auto_login)"
                             )
                             return "", "", "", 0
@@ -2105,7 +2111,7 @@ class MainWindow(QtWidgets.QMainWindow):
                         try:
                             self.auth_info = True, self.launch_account_type
                             self.nickname_entry.setReadOnly(True)
-                            logging.debug(
+                            logger.debug(
                                 "Successful login using Ely.by account (auto_login)"
                             )
                             return (
@@ -2115,14 +2121,14 @@ class MainWindow(QtWidgets.QMainWindow):
                                 time.time() + float(login_info["expires_in"]),
                             )
                         except KeyError:
-                            logging.debug(
+                            logger.debug(
                                 "Failed login using Ely.by account (KeyError exception) (auto_login)"
                             )
                             self.auth_info = False, None
                             return "", "", "", 0
                 except requests.RequestException as e:
                     self.auth_info = False, None
-                    logging.debug(
+                    logger.debug(
                         f"Failed login using {self.launch_account_type} account ({e} exception) (auto_login)"
                     )
                     return (
@@ -2134,7 +2140,7 @@ class MainWindow(QtWidgets.QMainWindow):
             else:
                 self.auth_info = True, self.launch_account_type
                 self.nickname_entry.setReadOnly(True)
-                logging.debug(
+                logger.debug(
                     f"Token was not refreshed because it is still valid ({self.launch_account_type} account)"
                 )
                 return (
@@ -2145,7 +2151,7 @@ class MainWindow(QtWidgets.QMainWindow):
                 )
         else:
             self.auth_info = False, None
-            logging.debug(
+            logger.debug(
                 f"Failed login using {self.launch_account_type} account (No Internet connection or there is no any accounts to login) (auto_login)"
             )
             return (
@@ -2277,7 +2283,7 @@ class MainWindow(QtWidgets.QMainWindow):
 
         self.show()
 
-        logging.debug("Checking Internet connection...")
+        logger.debug("Checking Internet connection...")
 
         try:
             requests.get("https://google.com", timeout=10).raise_for_status()
@@ -2285,26 +2291,25 @@ class MainWindow(QtWidgets.QMainWindow):
         except requests.exceptions.ConnectionError:
             self.no_internet_connection = True
 
-        logging.debug(f"No Internet connection: {self.no_internet_connection}")
+        logger.debug(f"No Internet connection: {self.no_internet_connection}")
         self.rpc = Presence(utils.Constants.DISCORD_CLIENT_ID)
 
         if not self.no_internet_connection:
             try:
                 self.rpc.connect()
-                logging.debug("Rpc successfuly connected")
+                logger.debug("Rpc successfuly connected")
             except pypresence.exceptions.DiscordNotFound as e:
-                logging.debug(f"There was an error while connecting rpc: {e}")
-                pass
+                logger.debug(f"There was an error while connecting rpc: {e}")
         utils.start_rich_presence(self.rpc)
 
-        logging.debug("Logging in account...")
+        logger.debug("Logging in account...")
         self.access_token, self.game_uuid, self.refresh_token, self.token_expires_at = (
             self.auto_login()
         )
-        logging.debug(f"Chosen account type: {self.launch_account_type}")
-        logging.debug(f"Access token: {utils.hide_security_data(self.access_token)}")
-        logging.debug(f"Refresh token: {utils.hide_security_data(self.refresh_token)}")
-        logging.debug(f"Game uuid: {utils.hide_security_data(self.game_uuid)}")
+        logger.debug(f"Chosen account type: {self.launch_account_type}")
+        logger.debug(f"Access token: {utils.hide_security_data(self.access_token)}")
+        logger.debug(f"Refresh token: {utils.hide_security_data(self.refresh_token)}")
+        logger.debug(f"Game uuid: {utils.hide_security_data(self.game_uuid)}")
         if not self.game_uuid:
             self.launch_account_type = "Ely.by"
 
@@ -2331,7 +2336,7 @@ class MainWindow(QtWidgets.QMainWindow):
                 ).start()
                 sys.exit()
             else:
-                logging.debug(
+                logger.debug(
                     f"User cancelled update. Current launcher version: {utils.Constants.LAUNCHER_VERSION}"
                 )
 
@@ -2341,9 +2346,9 @@ if __name__ == "__main__":
     open("FVLauncher.log", "w").close()
     logging.getLogger("requests").setLevel(logging.WARNING)
     logging.getLogger("urllib3").setLevel(logging.WARNING)
-    logging.debug("Program started its work")
+    logger.debug("Program started its work")
     config = load_config()
-    logging.debug("Config loaded")
+    logger.debug("Config loaded")
     faker = Faker()
     main_window = MainWindow(
         config["Preset"]["version"],

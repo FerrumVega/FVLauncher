@@ -1,23 +1,25 @@
-import os
-import minecraft_launcher_lib
-import requests
+import hashlib
 import json
 import logging
-import uuid
-import subprocess
-import optipy
-import time
-import sys
-import traceback
+import os
 import random
 import string
-import hashlib
-from faker import Faker
-from typing import Dict, Union, Callable, Any, Optional, Tuple, Iterable
-from pypresence.presence import Presence
+import subprocess
+import sys
+import time
+import traceback
+import uuid
+from collections.abc import Callable, Iterable
 from multiprocessing.queues import Queue
-from PySide6 import QtWidgets, QtGui
+from typing import Any
+
+import minecraft_launcher_lib
+import optipy
+import requests
 from defusedxml import ElementTree as ET
+from faker import Faker
+from pypresence.presence import Presence
+from PySide6 import QtGui, QtWidgets
 
 logging.getLogger("requests").setLevel(logging.WARNING)
 logging.getLogger("urllib3").setLevel(logging.WARNING)
@@ -33,18 +35,17 @@ class Constants:
     ELY_PROXY_URL = "https://fvlauncher.ferrumthevega.workers.dev"
     ELY_CLIENT_ID = "fvlauncherapp"
 
-    LAUNCHER_VERSION = "v8.4.5"
+    LAUNCHER_VERSION = "v8.4.6"
     USER_AGENT = Faker().user_agent()
 
 
 app = QtWidgets.QApplication(sys.argv)
 app.setStyle(QtWidgets.QStyleFactory.create("windows11"))
+logger = logging.getLogger(__name__)
 window_icon = QtGui.QIcon(
-    (
-        os.path.join(
-            "assets",
-            "minecraft_title.png",
-        )
+    os.path.join(
+        "assets",
+        "minecraft_title.png",
     )
 )
 
@@ -64,9 +65,10 @@ def search_projects(minecraft_directory: str, instance_name: str, queue: Queue):
                 os.path.join(instance_path, project_type_folder)
             ):
                 path = os.path.join(instance_path, project_type_folder, filename)
-                hashes_and_paths[
-                    hashlib.sha512(open(path, "rb").read()).hexdigest()
-                ] = path
+                with open(path, "rb") as fp:
+                    hashes_and_paths[hashlib.file_digest(fp, "sha512").hexdigest()] = (
+                        path
+                    )
         except FileNotFoundError:
             pass
     queue.put(("status", "Поиск файлов версий"))
@@ -105,7 +107,7 @@ def search_projects(minecraft_directory: str, instance_name: str, queue: Queue):
                     projects[project_id]["icon_bytes"] = r.content
             else:
                 projects[project_id]["icon_bytes"] = None
-            logging.debug(f"Doing smth with {project_name} ({index}/{projects_len})")
+            logger.debug(f"Doing smth with {project_name} ({index}/{projects_len})")
             queue.put(("progressbar", index / projects_len * 100))
             queue.put(("status", f"Работа с {project_name}"))
     queue.put(("projects", projects, list(hashes_and_paths.values())))
@@ -115,7 +117,7 @@ def track_progress_factory(queue: Queue):
     progress: int = 0
     max_progress: int = 100
 
-    def track_progress(value: Union[str, int], progress_type: str):
+    def track_progress(value: str | int, progress_type: str):
         nonlocal progress, max_progress
         if progress_type != "progress_info":
             if progress_type == "progress":
@@ -157,17 +159,17 @@ def run_in_process_with_exceptions_logging(
 ):
     try:
         func(*args, queue, **kwargs)
-    except Exception as e:
+    except Exception as e:  # noqa: BLE001
         queue.put((
             "log_exception",
             None,
-            "".join(traceback.format_exception(type(e), e, e.__traceback__)),
+            "".join(traceback.format_exception(e)),
         ))
         if is_game_launch_process:
             queue.put(("start_button", True))
 
 
-def boolean_to_sign_status(auth_info: Tuple[Optional[bool], Optional[str]]):
+def boolean_to_sign_status(auth_info: tuple[bool | None, str | None]):
     sign_text = {
         True: "Вы вошли в аккаунт",
         False: "Вы не вошли в аккаунт",
@@ -266,7 +268,7 @@ def download_authlib(
 ):
     if not no_internet_connection:
         queue.put(("status", "Загрузка authlib..."))
-        logging.debug(
+        logger.debug(
             f"Installing authlib in launch, account type: {launch_account_type}"
         )
         json_path = os.path.join(
@@ -308,7 +310,7 @@ def download_authlib(
                                 r.raise_for_status()
                                 authlib_jar = r.content
                             jar.write(authlib_jar)
-                            logging.debug(
+                            logger.debug(
                                 f"Installed patched authlib {maven_version.text}"
                             )
                         break
@@ -319,7 +321,7 @@ def download_authlib(
                         "Ошибка authlib",
                         "Для данной версии ещё не вышла патченая authlib, обычна она выходит в течении пяти дней после выхода версии.",
                     ))
-                    logging.warning(
+                    logger.warning(
                         f"Warning message showed in download_authlib: skin error, there is not patched authlib for {raw_version} version"
                     )
                     return
@@ -339,7 +341,7 @@ def download_authlib(
                         r.raise_for_status()
                         authlib_jar = r.content
                     jar.write(authlib_jar)
-                    logging.debug("Installed original authlib")
+                    logger.debug("Installed original authlib")
 
         else:
             queue.put((
@@ -348,7 +350,7 @@ def download_authlib(
                 "Ошибка authlib",
                 "На данной версии нет authlib, скины и авторизация не поддерживаются.",
             ))
-            logging.warning(
+            logger.warning(
                 f"Warning message showed in download_authlib: skins not supported on {raw_version} version"
             )
     else:
@@ -358,7 +360,7 @@ def download_authlib(
             "Ошибка authlib",
             "Отсутсвует подключение к интернету.",
         ))
-        logging.warning(
+        logger.warning(
             "Warning message showed in download_authlib: skin error, no internet connection"
         )
 
@@ -369,7 +371,7 @@ def resolve_version_name(
     minecraft_directory: str,
     queue: Queue,
     ignore_installed_file: bool = False,
-) -> Tuple[Union[None, str], Dict[str, bool | str]]:
+) -> tuple[str | None, dict[str, bool | str]]:
     for v in sorted(
         minecraft_launcher_lib.utils.get_installed_versions(minecraft_directory),
         reverse=True,
@@ -403,43 +405,41 @@ def resolve_version_name(
                         and json.load(version_info)["inheritsFrom"] == version
                     ):
                         return folder_name, {}
-    else:
-        for v in os.listdir(os.path.join(minecraft_directory, "instances")):
-            instance_info_path = os.path.join(
-                minecraft_directory,
-                "instances",
-                v,
-                "instance_info.json",
-            )
-            if version == v and os.path.isfile(instance_info_path):
-                with open(instance_info_path, encoding="utf-8") as instance_info_file:
-                    vanilla_version = json.load(instance_info_file)["mc_version"]
-                    if resolve_version_name(
-                        vanilla_version, mod_loader, minecraft_directory, queue
-                    )[0]:
-                        return vanilla_version, {
-                            "game_directory": os.path.join(
-                                minecraft_directory, "instances", v
-                            )
-                        }
-                    elif mod_loader == "vanilla":
-                        queue.put((
-                            "show_message",
-                            "critical",
-                            "Ошибка запуска профиля/сборки",
-                            "Версия игры, которую требует профиль/сборка некорректно установлена. Запуск невозможен.",
-                        ))
-                        return None, {"do_not_install": True}
-                    else:
-                        queue.put((
-                            "show_message",
-                            "critical",
-                            "Ошибка запуска профиля/сборки",
-                            'Для запуска сборки/профиля выберите "vanilla" в списке загрузчиков модов',
-                        ))
-                        return None, {"do_not_install": True}
-        else:
-            return None, {}
+    for v in os.listdir(os.path.join(minecraft_directory, "instances")):
+        instance_info_path = os.path.join(
+            minecraft_directory,
+            "instances",
+            v,
+            "instance_info.json",
+        )
+        if version == v and os.path.isfile(instance_info_path):
+            with open(instance_info_path, encoding="utf-8") as instance_info_file:
+                vanilla_version = json.load(instance_info_file)["mc_version"]
+                if resolve_version_name(
+                    vanilla_version, mod_loader, minecraft_directory, queue
+                )[0]:
+                    return vanilla_version, {
+                        "game_directory": os.path.join(
+                            minecraft_directory, "instances", v
+                        )
+                    }
+                elif mod_loader == "vanilla":
+                    queue.put((
+                        "show_message",
+                        "critical",
+                        "Ошибка запуска профиля/сборки",
+                        "Версия игры, которую требует профиль/сборка некорректно установлена. Запуск невозможен.",
+                    ))
+                    return None, {"do_not_install": True}
+                else:
+                    queue.put((
+                        "show_message",
+                        "critical",
+                        "Ошибка запуска профиля/сборки",
+                        'Для запуска сборки/профиля выберите "vanilla" в списке загрузчиков модов',
+                    ))
+                    return None, {"do_not_install": True}
+    return None, {}
 
 
 def install_version(
@@ -501,7 +501,7 @@ def install_version(
                 "Произошла непредвиденная ошибка во время загрузки версии.",
             ))
             queue.put(("start_button", True))
-            logging.error(
+            logger.error(
                 f"Error message showed in install_version: error after download {version} version"
             )
             return None
@@ -513,7 +513,7 @@ def install_version(
             "Вы в оффлайн-режиме. Версия отсутсвует на вашем компьютере, загрузка невозможна. Попробуйте перезапустить лаунчер.",
         ))
         queue.put(("start_button", True))
-        logging.error(
+        logger.error(
             "Error message showed in install_version: cannot download version because there is not internet connection"
         )
     elif not other_info.get("do_not_install", False):
@@ -524,7 +524,7 @@ def install_version(
             "Для данной версии нет выбранного вами загрузчика модов.",
         ))
         queue.put(("start_button", True))
-        logging.error(
+        logger.error(
             f"Error message showed in install_version: mod loader {mod_loader} is not supported on the {version} version"
         )
 
@@ -541,12 +541,14 @@ def download_optifine(
         if optifine_info is not None:
             url = optifine_info[raw_version][0]["url"]
             queue.put(("status", "Загрузка optifine..."))
-            logging.debug("Installing optifine in download_optifine")
-            with open(optifine_path, "wb") as optifine_jar:
-                with requests.get(url, timeout=10) as r:
-                    r.raise_for_status()
-                    optifine_jar.write(r.content)
-            logging.debug(f"Optifine installed, path: {optifine_path}")
+            logger.debug("Installing optifine in download_optifine")
+            with (
+                open(optifine_path, "wb") as optifine_jar,
+                requests.get(url, timeout=10) as r,
+            ):
+                r.raise_for_status()
+                optifine_jar.write(r.content)
+            logger.debug(f"Optifine installed, path: {optifine_path}")
         else:
             queue.put((
                 "show_message",
@@ -554,7 +556,7 @@ def download_optifine(
                 "Запуск без optifine",
                 "Optifine недоступен на выбранной вами версии.",
             ))
-            logging.warning(
+            logger.warning(
                 f"Warning message showed in download_optifine: optifine is not support on {raw_version} version"
             )
     else:
@@ -564,7 +566,7 @@ def download_optifine(
             "Ошибка optifine",
             "Отсутсвует подключение к интернету.",
         ))
-        logging.warning(
+        logger.warning(
             "Warning message showed in download_optifine: optifine error, no internet connection"
         )
 
@@ -665,7 +667,7 @@ def launch(
             launch_account_type,
             queue,
         )
-        logging.debug(f"Launching {version} version")
+        logger.debug(f"Launching {version} version")
         popen_kwargs = {}
         if not show_console:
             popen_kwargs["creationflags"] = subprocess.CREATE_NO_WINDOW
@@ -679,7 +681,7 @@ def launch(
         queue.put(("start_button", True))
         queue.put(("status", "Игра запущена"))
         queue.put(("progressbar", 100))
-        logging.debug(f"Minecraft process started on {version} version")
+        logger.debug(f"Minecraft process started on {version} version")
         queue.put((
             "start_rich_presence",
             "minecraft_opened",
@@ -692,8 +694,10 @@ def launch(
                 "show_message",
                 "log",
                 "Игра была закрыта с ошибкой",
-                f"Minecraft вернул ошибку (крашнулся). Код ошибки: {minecraft_return_code}<br>"
-                "Вы хотите открыть лог?",
+                (
+                    f"Minecraft вернул ошибку (крашнулся). Код ошибки: {minecraft_return_code}<br>"
+                    "Вы хотите открыть лог?"
+                ),
                 os.path.join(minecraft_directory, "logs", "latest.log"),
             ))
         queue.put(("start_rich_presence", "minecraft_closed"))
@@ -712,7 +716,7 @@ def mod_loader_is_supported(raw_version: str, mod_loader: str):
 
 
 def only_project_install(
-    project_version: Dict[Any, Any],
+    project_version: dict[Any, Any],
     project_file_path: str,
     queue: Queue,
 ):
@@ -740,11 +744,11 @@ def only_project_install(
     if project_version["project_type"] == "modpack":
         queue_info.append(project_file_path)
     queue.put(queue_info)
-    logging.info(f"Project {project_version['title']} installed")
+    logger.debug(f"Project {project_version['title']} installed")
 
 
 def start_rich_presence(
-    rpc: Presence, raw_version: Optional[str] = None, pid: Optional[int] = None
+    rpc: Presence, raw_version: str | None = None, pid: int | None = None
 ):
     try:
         if pid is None:
