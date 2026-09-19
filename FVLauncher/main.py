@@ -29,13 +29,15 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
+get_translate = utils.get_translate
+
 
 def log_exception(exception_info: str):
     logger.critical(f"There was an error:\n{exception_info}")
     QtWidgets.QMessageBox.critical(
         utils.app.activeWindow(),
-        "Ошибка",
-        f"Произошла непредвиденная ошибка:\n{exception_info}",
+        get_translate("Ошибка"),
+        get_translate("Произошла непредвиденная ошибка:\n{}").format(exception_info),
     )
 
 
@@ -69,6 +71,7 @@ def load_config():
             "show_other_versions": "1",
             "show_instances_and_packs": "1",
             "minecraft_directory": "",
+            "language": "ru",
         },
         "Experiments": {
             "allow_experiments": "0",
@@ -164,7 +167,7 @@ def update_ui_from_queue(self):
                     self._after_stop_download_process()
                 else:
                     self.start_button_type = "Stop"
-                    self.start_button.setText("Отмена")
+                    self.start_button.setText(get_translate("Отмена"))
             case "start_rich_presence":
                 match value:
                     case "minecraft_opened":
@@ -185,7 +188,7 @@ class ClickableLabel(QtWidgets.QLabel):
         else:
             self.setStyleSheet("QLabel::hover {color: #03D3FC}")
         self.setCursor(Qt.CursorShape.PointingHandCursor)
-        self.setToolTip("Кликните для просмотра")
+        self.setToolTip(get_translate("Кликните для просмотра"))
 
     clicked = Signal()
 
@@ -243,8 +246,8 @@ class ProjectsSearch(QtWidgets.QDialog):
                     for project_file in project_files:
                         if not (project_file["primary_project"]):
                             dependencies_types = {
-                                "required": "обязательную ",
-                                "optional": "опциональную ",
+                                "required": get_translate("обязательную "),
+                                "optional": get_translate("опциональную "),
                                 None: "",
                             }
                             if (
@@ -255,8 +258,11 @@ class ProjectsSearch(QtWidgets.QDialog):
                                 continue
                             reply = QtWidgets.QMessageBox.warning(
                                 self,
-                                "Зависимость",
-                                f"Скачать {dependencies_types[project_file['dependency_type']]}зависимость {project_file['title']}?",
+                                get_translate("Зависимость"),
+                                get_translate("Скачать {}зависимость {}?").format(
+                                    dependencies_types[project_file["dependency_type"]],
+                                    project_file["title"],
+                                ),
                                 QtWidgets.QMessageBox.StandardButton.Yes
                                 | QtWidgets.QMessageBox.StandardButton.No,
                             )
@@ -289,8 +295,10 @@ class ProjectsSearch(QtWidgets.QDialog):
                                 if inherits_from != mc_version and (
                                     QtWidgets.QMessageBox.warning(
                                         self,
-                                        "Предупреждение",
-                                        f"Версия игры экземпляра не совпадает с версией игры проекта, который вы выбрали\nВерсия игры проекта: {mc_version}\nВерсия игры сборки: {inherits_from}.\nВы уверены, что хотите установить проект на этот экземпляр?",
+                                        get_translate("Предупреждение"),
+                                        get_translate(
+                                            "Версия игры экземпляра не совпадает с версией игры проекта, который вы выбрали\nВерсия игры проекта: {}\nВерсия игры сборки: {}.\nВы уверены, что хотите установить проект на этот экземпляр?"
+                                        ).format(mc_version, inherits_from),
                                         QtWidgets.QMessageBox.StandardButton.Yes
                                         | QtWidgets.QMessageBox.StandardButton.No,
                                     )
@@ -304,8 +312,12 @@ class ProjectsSearch(QtWidgets.QDialog):
                                     and (
                                         QtWidgets.QMessageBox.warning(
                                             self,
-                                            "Предупреждение",
-                                            f"Вероятнее всего, вы пытаетесь установить мод на неподходящий загрузчик модов или на ванильный экземпляр.\nНазвание папки версии: {instance_info['mc_version']}\nВыбранный загрузчик модов: {loader}.\nВы уверены, что хотите установить мод на этот экземпляр?",
+                                            get_translate("Предупреждение"),
+                                            get_translate(
+                                                "Вероятнее всего, вы пытаетесь установить мод на неподходящий загрузчик модов или на ванильный экземпляр.\nНазвание папки версии: {}\nВыбранный загрузчик модов: {}.\nВы уверены, что хотите установить мод на этот экземпляр?"
+                                            ).format(
+                                                instance_info["mc_version"], loader
+                                            ),
                                             QtWidgets.QMessageBox.StandardButton.Yes
                                             | QtWidgets.QMessageBox.StandardButton.No,
                                         )
@@ -381,7 +393,9 @@ class ProjectsSearch(QtWidgets.QDialog):
                         ):
                             instances.append(instance)
                     self.setModal(True)
-                    self.setWindowTitle("Выбор экземпляра для загрузки проекта")
+                    self.setWindowTitle(
+                        get_translate("Выбор экземпляра для загрузки проекта")
+                    )
                     self.setFixedSize(300, 500)
 
                     self.progressbar = QtWidgets.QProgressBar(self, textVisible=False)
@@ -419,7 +433,7 @@ class ProjectsSearch(QtWidgets.QDialog):
                         )
                         self.instances_layout.addWidget(download_button)
                     download_button = ClickableLabel(self)
-                    download_button.setText("В корень (без сборки)")
+                    download_button.setText(get_translate("В корень (без сборки)"))
                     download_button.clicked.connect(
                         lambda *args, cur_instance="": self.download_projects_process(
                             self.loaders_and_files[self.loader],
@@ -550,7 +564,9 @@ class ProjectsSearch(QtWidgets.QDialog):
 
             def _make_ui(self):
                 self.setModal(True)
-                self.setWindowTitle(f"Загрузка {self.project['title']}")
+                self.setWindowTitle(
+                    get_translate("Загрузка {}").format(self.project["title"])
+                )
                 self.setFixedSize(300, 500)
 
                 with requests.get(
@@ -639,7 +655,13 @@ class ProjectsSearch(QtWidgets.QDialog):
             self.project_title.move(20, 20)
             self.downloads = f"{self.project['downloads']:_}".replace("_", " ")
             self.project_title.setText(
-                f"{self.project['title']} ({type_to_russian_name.get(self.project['project_type'], 'проект').capitalize()} с {self.downloads} скачиваниями)"
+                get_translate("{} ({} с {} скачиваниями)").format(
+                    self.project["title"],
+                    type_to_name.get(
+                        self.project["project_type"], get_translate("проект")
+                    ).capitalize(),
+                    self.downloads,
+                )
             )
             self.project_title.setAlignment(Qt.AlignmentFlag.AlignCenter)
             self.project_title.setFixedWidth(260)
@@ -726,7 +748,7 @@ class ProjectsSearch(QtWidgets.QDialog):
             self.p_layout.addWidget(w)
 
     def _make_ui(self):
-        self.setWindowTitle("Поиск проектов на Modrinth")
+        self.setWindowTitle(get_translate("Поиск проектов на Modrinth"))
         self.setFixedSize(300, 500)
         self.setModal(True)
 
@@ -737,7 +759,7 @@ class ProjectsSearch(QtWidgets.QDialog):
         self.search_button = QtWidgets.QPushButton(self)
         self.search_button.move(240, 20)
         self.search_button.setFixedWidth(40)
-        self.search_button.setText("Поиск")
+        self.search_button.setText(get_translate("Поиск"))
         self.search_button.clicked.connect(
             lambda: self.search(self.search_string.text())
         )
@@ -763,7 +785,9 @@ class SettingsWindow(QtWidgets.QDialog):
         if directory:
             main_window.minecraft_directory = directory.replace("/", "\\")
             self.current_minecraft_directory.setText(
-                f"Текущая папка с игрой:\n{main_window.minecraft_directory}"
+                get_translate("Текущая папка с игрой:\n{}").format(
+                    main_window.minecraft_directory
+                )
             )
 
     def closeEvent(self, event: QtGui.QCloseEvent):
@@ -780,6 +804,7 @@ class SettingsWindow(QtWidgets.QDialog):
         main_window.show_instances_and_packs = (
             self.instances_and_packs_checkbox.isChecked()
         )
+        main_window.language = name_to_langcode[self.language_combobox.currentText()]
         return super().closeEvent(event)
 
     def reject(self):
@@ -787,11 +812,13 @@ class SettingsWindow(QtWidgets.QDialog):
         return super().reject()
 
     def _make_ui(self):
-        self.setWindowTitle("Настройки")
+        self.setWindowTitle(get_translate("Настройки"))
         self.setFixedSize(300, 500)
         self.setModal(True)
 
-        self.java_arguments_label = QtWidgets.QLabel(self, text="java-аргументы")
+        self.java_arguments_label = QtWidgets.QLabel(
+            self, text=get_translate("java-аргументы")
+        )
         self.java_arguments_label.move(25, 25)
         self.java_arguments_label.setFixedWidth(250)
         self.java_arguments_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
@@ -803,21 +830,23 @@ class SettingsWindow(QtWidgets.QDialog):
 
         self.show_console_checkbox = QtWidgets.QCheckBox(self)
         self.show_console_checkbox.setChecked(bool(main_window.show_console))
-        self.show_console_checkbox.setText("Запуск с консолью")
+        self.show_console_checkbox.setText(get_translate("Запуск с консолью"))
         checkbox_width = self.show_console_checkbox.sizeHint().width()
         self.main_window_width = self.width()
         self.show_console_checkbox.move(
             (self.main_window_width - checkbox_width) // 2, 85
         )
 
-        self.versions_filter_label = QtWidgets.QLabel(self, text="Фильтр версий")
+        self.versions_filter_label = QtWidgets.QLabel(
+            self, text=get_translate("Фильтр версий")
+        )
         self.versions_filter_label.move(25, 125)
         self.versions_filter_label.setFixedWidth(250)
         self.versions_filter_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
 
         self.old_alphas_checkbox = QtWidgets.QCheckBox(self)
         self.old_alphas_checkbox.setChecked(bool(main_window.show_old_alphas))
-        self.old_alphas_checkbox.setText("Старые альфы")
+        self.old_alphas_checkbox.setText(get_translate("Старые альфы"))
         self.checkbox_width = self.old_alphas_checkbox.sizeHint().width()
         self.old_alphas_checkbox.move(
             (self.main_window_width - self.checkbox_width) // 2, 145
@@ -825,7 +854,7 @@ class SettingsWindow(QtWidgets.QDialog):
 
         self.old_betas_checkbox = QtWidgets.QCheckBox(self)
         self.old_betas_checkbox.setChecked(bool(main_window.show_old_betas))
-        self.old_betas_checkbox.setText("Старые беты")
+        self.old_betas_checkbox.setText(get_translate("Старые беты"))
         self.checkbox_width = self.old_betas_checkbox.sizeHint().width()
         self.old_betas_checkbox.move(
             (self.main_window_width - self.checkbox_width) // 2, 165
@@ -833,7 +862,7 @@ class SettingsWindow(QtWidgets.QDialog):
 
         self.snapshots_checkbox = QtWidgets.QCheckBox(self)
         self.snapshots_checkbox.setChecked(bool(main_window.show_snapshots))
-        self.snapshots_checkbox.setText("Снапшоты")
+        self.snapshots_checkbox.setText(get_translate("Снапшоты"))
         self.checkbox_width = self.snapshots_checkbox.sizeHint().width()
         self.snapshots_checkbox.move(
             (self.main_window_width - self.checkbox_width) // 2, 185
@@ -841,7 +870,7 @@ class SettingsWindow(QtWidgets.QDialog):
 
         self.releases_checkbox = QtWidgets.QCheckBox(self)
         self.releases_checkbox.setChecked(bool(main_window.show_releases))
-        self.releases_checkbox.setText("Релизы")
+        self.releases_checkbox.setText(get_translate("Релизы"))
         self.checkbox_width = self.releases_checkbox.sizeHint().width()
         self.releases_checkbox.move(
             (self.main_window_width - self.checkbox_width) // 2, 205
@@ -849,7 +878,7 @@ class SettingsWindow(QtWidgets.QDialog):
 
         self.other_versions_checkbox = QtWidgets.QCheckBox(self)
         self.other_versions_checkbox.setChecked(bool(main_window.show_other_versions))
-        self.other_versions_checkbox.setText("Прочие версии")
+        self.other_versions_checkbox.setText(get_translate("Прочие версии"))
         self.checkbox_width = self.other_versions_checkbox.sizeHint().width()
         self.other_versions_checkbox.move(
             (self.main_window_width - self.checkbox_width) // 2, 225
@@ -859,7 +888,7 @@ class SettingsWindow(QtWidgets.QDialog):
         self.instances_and_packs_checkbox.setChecked(
             bool(main_window.show_instances_and_packs)
         )
-        self.instances_and_packs_checkbox.setText("Экземпляры и сборки")
+        self.instances_and_packs_checkbox.setText(get_translate("Экземпляры и сборки"))
         self.checkbox_width = self.instances_and_packs_checkbox.sizeHint().width()
         self.instances_and_packs_checkbox.move(
             (self.main_window_width - self.checkbox_width) // 2, 245
@@ -892,24 +921,35 @@ class SettingsWindow(QtWidgets.QDialog):
         self.minecraft_directory_button.clicked.connect(
             lambda: self.set_game_directory(
                 QtWidgets.QFileDialog.getExistingDirectory(
-                    self, "Выбор папки для файлов игры"
+                    self, get_translate("Выбор папки для файлов игры")
                 )
             )
         )
-        self.minecraft_directory_button.setText("Выбор папки для файлов игры")
-
+        self.minecraft_directory_button.setText(
+            get_translate("Выбор папки для файлов игры")
+        )
         self.current_minecraft_directory = QtWidgets.QLabel(self)
         self.current_minecraft_directory.move(25, 315)
         self.current_minecraft_directory.setFixedWidth(250)
         self.current_minecraft_directory.setText(
-            f"Текущая папка с игрой:\n{main_window.minecraft_directory}"
+            get_translate("Текущая папка с игрой:\n{}").format(
+                main_window.minecraft_directory
+            )
         )
         self.current_minecraft_directory.setWordWrap(True)
         self.current_minecraft_directory.setAlignment(Qt.AlignmentFlag.AlignCenter)
 
+        self.language_combobox = QtWidgets.QComboBox(self)
+        self.language_combobox.addItems(["Беларуская", "Русский"])
+        self.language_combobox.setCurrentText(langcode_to_name[main_window.language])
+        self.language_combobox.move(25, 425)
+        self.language_combobox.setFixedWidth(250)
+
         self.launcher_version_label = QtWidgets.QLabel(self)
         self.launcher_version_label.setText(
-            f"Версия лаунчера: {utils.Constants.LAUNCHER_VERSION}"
+            get_translate("Версия лаунчера: {}").format(
+                utils.Constants.LAUNCHER_VERSION
+            )
         )
         self.launcher_version_label.move(25, 450)
         self.launcher_version_label.setFixedWidth(250)
@@ -942,7 +982,7 @@ class AccountWindow(QtWidgets.QDialog):
             self.view_layout = QtWidgets.QVBoxLayout(self)
 
             self.view_layout.addWidget(self.view)
-            self.setWindowTitle("Изменение скина")
+            self.setWindowTitle(get_translate("Изменение скина"))
 
             self.show()
 
@@ -955,7 +995,9 @@ class AccountWindow(QtWidgets.QDialog):
         ):
             if main_window.auth_info[0]:
                 QtWidgets.QMessageBox.critical(
-                    parent, "Ошибка входа", "Сначала выйдите из аккаунта"
+                    parent,
+                    get_translate("Ошибка входа"),
+                    get_translate("Сначала выйдите из аккаунта"),
                 )
                 return
             super().__init__(parent)
@@ -992,8 +1034,10 @@ class AccountWindow(QtWidgets.QDialog):
                         self.close()
                         QtWidgets.QMessageBox.critical(
                             self,
-                            "Ошибка входа",
-                            "Вероятнее всего, вы не владеете игрой. Использование этого аккаунта невозможно",
+                            get_translate("Ошибка входа"),
+                            get_translate(
+                                "Вероятнее всего, вы не владеете игрой. Использование этого аккаунта невозможно"
+                            ),
                         )
                         logger.debug(
                             "Failed login using Microsoft account (AccountNotOwnMinecraft exception)"
@@ -1032,7 +1076,9 @@ class AccountWindow(QtWidgets.QDialog):
                     main_window.nickname_entry.setText(nickname)
                     main_window.nickname_entry.setReadOnly(True)
                     QtWidgets.QMessageBox.information(
-                        self, "Успешно!", "Вы успешно вошли в аккаунт"
+                        self,
+                        get_translate("Успешно!"),
+                        get_translate("Вы успешно вошли в аккаунт"),
                     )
                     main_window.auth_info = True, account_type
                     self.sign_status_label.setText(
@@ -1073,7 +1119,7 @@ class AccountWindow(QtWidgets.QDialog):
             self.view_layout = QtWidgets.QVBoxLayout(self)
 
             self.view_layout.addWidget(self.view)
-            self.setWindowTitle("Вход в аккаунт")
+            self.setWindowTitle(get_translate("Вход в аккаунт"))
 
             self.show()
 
@@ -1098,7 +1144,7 @@ class AccountWindow(QtWidgets.QDialog):
         browser_instance.cookieStore().deleteAllCookies()
 
     def _make_ui(self):
-        self.setWindowTitle("Аккаунт")
+        self.setWindowTitle(get_translate("Аккаунт"))
         self.setFixedSize(300, 500)
         self.setModal(True)
 
@@ -1110,7 +1156,7 @@ class AccountWindow(QtWidgets.QDialog):
         self.account_type_combobox.move(50, 10)
 
         self.login_button = QtWidgets.QPushButton(self)
-        self.login_button.setText("Войти в аккаунт")
+        self.login_button.setText(get_translate("Войти в аккаунт"))
         self.login_button.clicked.connect(
             lambda: self.LoginWindow(self, self.sign_status_label, self.account_type)
         )
@@ -1118,13 +1164,13 @@ class AccountWindow(QtWidgets.QDialog):
         self.login_button.move(50, 40)
 
         self.logout_button = QtWidgets.QPushButton(self)
-        self.logout_button.setText("Выйти из аккаунта")
+        self.logout_button.setText(get_translate("Выйти из аккаунта"))
         self.logout_button.clicked.connect(self.logout)
         self.logout_button.setFixedWidth(200)
         self.logout_button.move(50, 70)
 
         self.change_skin_button = QtWidgets.QPushButton(self)
-        self.change_skin_button.setText("Изменить скин")
+        self.change_skin_button.setText(get_translate("Изменить скин"))
         self.change_skin_button.setFixedWidth(120)
         self.change_skin_button.move(90, 100)
         self.change_skin_button.clicked.connect(
@@ -1190,30 +1236,38 @@ class InstancesWindow(QtWidgets.QDialog):
                     )
                     QtWidgets.QMessageBox.information(
                         self,
-                        "Создание экземпляра",
-                        f"Папка экземпляра успешно создана по пути {instance_path}",
+                        get_translate("Создание экземпляра"),
+                        get_translate(
+                            "Папка экземпляра успешно создана по пути {}"
+                        ).format(instance_path),
                     )
                     logger.debug(f"New instance created, path: {instance_path}")
                 elif not version_installed:
                     QtWidgets.QMessageBox.critical(
                         self,
-                        "Ошибка создания экземпляра",
-                        "Выбранная вами версия некорректно устанолена",
+                        get_translate("Ошибка создания экземпляра"),
+                        get_translate(
+                            "Выбранная вами версия некорректно установлена",
+                        ),
                     )
                 else:
                     QtWidgets.QMessageBox.critical(
                         self,
-                        "Ошибка создания экземпляра",
-                        "Укажите название экземпляра и выберите папку версии",
+                        get_translate("Ошибка создания экземпляра"),
+                        get_translate(
+                            "Укажите название экземпляра и выберите папку версии"
+                        ),
                     )
 
             self.setModal(True)
-            self.setWindowTitle("Создание экземпляра")
+            self.setWindowTitle(get_translate("Создание экземпляра"))
             self.setFixedSize(300, 150)
 
             self.instance_name_entry = QtWidgets.QLineEdit(self)
             self.instance_name_entry.setFixedWidth(240)
-            self.instance_name_entry.setPlaceholderText("Название экземпляра")
+            self.instance_name_entry.setPlaceholderText(
+                get_translate("Название экземпляра")
+            )
             self.instance_name_entry.move(10, 20)
 
             self.random_instance_name_button = QtWidgets.QPushButton(self)
@@ -1229,7 +1283,9 @@ class InstancesWindow(QtWidgets.QDialog):
 
             self.instance_version_entry = QtWidgets.QLineEdit(self)
             self.instance_version_entry.setFixedWidth(240)
-            self.instance_version_entry.setPlaceholderText("Путь к папке версии")
+            self.instance_version_entry.setPlaceholderText(
+                get_translate("Путь к папке версии")
+            )
             self.instance_version_entry.move(10, 50)
 
             self.choose_version_folder_button = QtWidgets.QPushButton(self)
@@ -1240,7 +1296,7 @@ class InstancesWindow(QtWidgets.QDialog):
                 lambda: self.instance_version_entry.setText(
                     QtWidgets.QFileDialog.getExistingDirectory(
                         self,
-                        "Выбор папки версии",
+                        get_translate("Выбор папки версии"),
                         os.path.join(main_window.minecraft_directory, "versions"),
                     ).replace("/", "\\")
                 )
@@ -1249,7 +1305,7 @@ class InstancesWindow(QtWidgets.QDialog):
             self.create_own_instance_button = QtWidgets.QPushButton(self)
             self.create_own_instance_button.setFixedWidth(120)
             self.create_own_instance_button.move(90, 80)
-            self.create_own_instance_button.setText("Создать экземпляр")
+            self.create_own_instance_button.setText(get_translate("Создать экземпляр"))
             self.create_own_instance_button.clicked.connect(create_folder)
 
             self.show()
@@ -1264,7 +1320,7 @@ class InstancesWindow(QtWidgets.QDialog):
 
                 def _make_ui(self):
                     self.setModal(False)
-                    self.setWindowTitle("Поиск проектов")
+                    self.setWindowTitle(get_translate("Поиск проектов"))
                     self.setFixedSize(300, 50)
 
                     self.progressbar = QtWidgets.QProgressBar(self, textVisible=False)
@@ -1286,17 +1342,14 @@ class InstancesWindow(QtWidgets.QDialog):
                         self.parent_window.search_projects_process.terminate()
                     return super().closeEvent(event)
 
-            def __init__(self, parent, instance_name: str):
+            def __init__(self, parent, instance_path: str):
                 if utils.app.keyboardModifiers() & Qt.KeyboardModifier.ShiftModifier:
                     load_icons = False
                 else:
                     load_icons = True
 
                 super().__init__(parent)
-                self.instance_name = instance_name
-                self.instance_path = os.path.join(
-                    main_window.minecraft_directory, "instances", self.instance_name
-                )
+                self.instance_path = instance_path
                 self.projects_container = QtWidgets.QWidget()
                 self.projects_layout = QtWidgets.QVBoxLayout(self.projects_container)
 
@@ -1314,7 +1367,7 @@ class InstancesWindow(QtWidgets.QDialog):
                     args=(
                         utils.search_projects,
                         main_window.minecraft_directory,
-                        self.instance_name,
+                        self.instance_path,
                         load_icons,
                     ),
                     kwargs={"queue": self.queue},
@@ -1331,8 +1384,10 @@ class InstancesWindow(QtWidgets.QDialog):
                 if (
                     QtWidgets.QMessageBox.information(
                         self,
-                        "Удаление экземпляра",
-                        f"Вы уверены, что хотите удалить проект {project_name}?",
+                        get_translate("Удаление экземпляра"),
+                        get_translate(
+                            "Вы уверены, что хотите удалить проект {}?"
+                        ).format(project_name),
                         QtWidgets.QMessageBox.StandardButton.Yes
                         | QtWidgets.QMessageBox.StandardButton.No,
                     )
@@ -1341,35 +1396,39 @@ class InstancesWindow(QtWidgets.QDialog):
                     os.remove(project_path)
                     QtWidgets.QMessageBox.information(
                         self,
-                        "Успешно!",
-                        f"Прокет {project_name} был успешно удалён.",
+                        get_translate("Успешно!"),
+                        get_translate("Проект {} был успешно удалён.").format(
+                            project_name
+                        ),
                     )
                     self.projects[project_id]["container"].deleteLater()
                     del self.projects[project_id]
 
             def export_mrpack(self):
                 NAME, ok = QtWidgets.QInputDialog.getText(
-                    self, "Создание mrpack", "Введите имя сборки"
+                    self,
+                    get_translate("Создание mrpack"),
+                    get_translate("Введите имя сборки"),
                 )
                 if not NAME or not ok:
                     return
                 VERSION_ID, ok = QtWidgets.QInputDialog.getText(
                     self,
-                    "Создание mrpack",
-                    "Введите версию сборки",
+                    get_translate("Создание mrpack"),
+                    get_translate("Введите версию сборки"),
                 )
                 if not VERSION_ID or not ok:
                     return
                 SUMMARY, ok = QtWidgets.QInputDialog.getText(
                     self,
-                    "Создание mrpack",
-                    "Введите краткое описание сборки (необязательно)",
+                    get_translate("Создание mrpack"),
+                    get_translate("Введите краткое описание сборки (необязательно)"),
                 )
                 if not ok:
                     return
                 overrides_paths, _ = QtWidgets.QFileDialog.getOpenFileNames(
                     self,
-                    "Выберите оверрайды",
+                    get_translate("Выберите оверрайды"),
                     self.instance_path,
                     "Все файлы (*)",
                 )
@@ -1386,7 +1445,8 @@ class InstancesWindow(QtWidgets.QDialog):
                     },
                 }
                 with open(
-                    os.path.join(self.instance_path, "instance_info.json")
+                    os.path.join(self.instance_path, "instance_info.json"),
+                    encoding="utf-8",
                 ) as instance_info_file:
                     mc_version = json.load(instance_info_file)["mc_version"]
                 with open(
@@ -1395,7 +1455,8 @@ class InstancesWindow(QtWidgets.QDialog):
                         "versions",
                         mc_version,
                         f"{mc_version}.json",
-                    )
+                    ),
+                    encoding="utf-8",
                 ) as mc_version_file:
                     mc_version_json = json.load(mc_version_file)
                     if "fabric" in mc_version:
@@ -1443,7 +1504,7 @@ class InstancesWindow(QtWidgets.QDialog):
                     })
                 mrpack_path, _ = QtWidgets.QFileDialog.getSaveFileName(
                     self,
-                    "Сохранить mrpack",
+                    get_translate("Сохранить mrpack"),
                     f"{NAME}.mrpack",
                     "MRPACK Files (*.mrpack);;All Files (*)",
                 )
@@ -1459,21 +1520,23 @@ class InstancesWindow(QtWidgets.QDialog):
                             ),
                         )
                 QtWidgets.QMessageBox.information(
-                    self, "Экспорт mrpack", f"Mrpack был сохранён по пути {mrpack_path}"
+                    self,
+                    get_translate("Экспорт mrpack"),
+                    get_translate("Mrpack был сохранён по пути {}").format(mrpack_path),
                 )
 
             def on_off_all(self):
-                if self.on_off_all_button.text() == "Выключить все":
+                if self.on_off_all_button.text() == get_translate("Выключить все"):
                     for project in self.projects.values():
                         if project["disabled"]:
                             continue
                         project_path = project["path"]
                         dst = f"{project_path}.disabled"
                         os.rename(project_path, dst)
-                        project["button"].setText("Включить")
+                        project["button"].setText(get_translate("Включить"))
                         project["disabled"] = True
                         project["path"] = dst
-                    self.on_off_all_button.setText("Включить все")
+                    self.on_off_all_button.setText(get_translate("Включить все"))
                 else:
                     for project in self.projects.values():
                         if not project["disabled"]:
@@ -1481,10 +1544,10 @@ class InstancesWindow(QtWidgets.QDialog):
                         project_path = project["path"]
                         dst = project_path.removesuffix(".disabled")
                         os.rename(project_path, dst)
-                        project["button"].setText("Выключить")
+                        project["button"].setText(get_translate("Выключить"))
                         project["disabled"] = False
                         project["path"] = dst
-                    self.on_off_all_button.setText("Выключить все")
+                    self.on_off_all_button.setText(get_translate("Выключить все"))
 
             def on_off_project(self, project_id: str):
                 project_path = self.projects[project_id]["path"]
@@ -1493,27 +1556,37 @@ class InstancesWindow(QtWidgets.QDialog):
                     dst = project_path.removesuffix(".disabled")
                     os.rename(project_path, dst)
                     QtWidgets.QMessageBox.information(
-                        self, "Включение проекта", "Проект был успешно включен."
+                        self,
+                        get_translate("Включение проекта"),
+                        get_translate("Проект был успешно включен."),
                     )
-                    self.projects[project_id]["button"].setText("Выключить")
+                    self.projects[project_id]["button"].setText(
+                        get_translate("Выключить")
+                    )
                     self.projects[project_id]["disabled"] = False
                 else:
                     dst = f"{project_path}.disabled"
                     os.rename(project_path, dst)
                     QtWidgets.QMessageBox.information(
-                        self, "Выключение проекта", "Проект был успешно выключен."
+                        self,
+                        get_translate("Выключение проекта"),
+                        get_translate("Проект был успешно выключен."),
                     )
-                    self.projects[project_id]["button"].setText("Включить")
+                    self.projects[project_id]["button"].setText(
+                        get_translate("Включить")
+                    )
                     self.projects[project_id]["disabled"] = True
                 self.projects[project_id]["path"] = dst
 
             def _make_ui(self):
                 self.setModal(True)
-                self.setWindowTitle("Управление проектами")
+                self.setWindowTitle(get_translate("Управление проектами"))
                 self.setFixedSize(1000, 500)
                 self.projects_len = len(self.projects.items())
 
-                self.on_off_all_button = ClickableLabel(self, text="Выключить все")
+                self.on_off_all_button = ClickableLabel(
+                    self, text=get_translate("Выключить все")
+                )
                 self.on_off_all_button.clicked.connect(self.on_off_all)
 
                 for index, (project_id, project_info) in enumerate(
@@ -1545,7 +1618,7 @@ class InstancesWindow(QtWidgets.QDialog):
 
                     project_name_label = QtWidgets.QLabel(
                         container,
-                        text=f"{project_name} ({type_to_russian_name[project_type]})",
+                        text=f"{project_name} ({type_to_name[project_type]})",
                     )
 
                     project_disabled = project_info["disabled"]
@@ -1557,11 +1630,13 @@ class InstancesWindow(QtWidgets.QDialog):
                         )
                     )
                     if project_disabled:
-                        on_off_button.setText("Включить")
+                        on_off_button.setText(get_translate("Включить"))
                     else:
-                        on_off_button.setText("Выключить")
+                        on_off_button.setText(get_translate("Выключить"))
 
-                    delete_button = ClickableLabel(container, text="Удалить")
+                    delete_button = ClickableLabel(
+                        container, text=get_translate("Удалить")
+                    )
                     delete_button.clicked.connect(
                         lambda cur_project_id=project_id: self.delete_project(
                             cur_project_id
@@ -1577,7 +1652,7 @@ class InstancesWindow(QtWidgets.QDialog):
                     self.projects_layout.addWidget(container)
 
                 self.export_mrpack_button = ClickableLabel(
-                    self, text="Экспорт в .mrpack"
+                    self, text=get_translate("Экспорт в .mrpack")
                 )
                 self.export_mrpack_button.clicked.connect(self.export_mrpack)
                 self.projects_layout.addWidget(self.on_off_all_button)
@@ -1599,36 +1674,35 @@ class InstancesWindow(QtWidgets.QDialog):
 
             self._make_ui()
 
-        def change_instance_mc_version(self, instance_name: str):
+        def change_instance_mc_version(self, instance_path: str):
             mc_version = os.path.basename(
                 QtWidgets.QFileDialog.getExistingDirectory(
                     self,
-                    "Выбор папки версии",
+                    get_translate("Выбор папки версии"),
                     os.path.join(main_window.minecraft_directory, "versions"),
                 ).replace("/", "\\")
             )
             if mc_version:
                 with open(
-                    os.path.join(
-                        main_window.minecraft_directory,
-                        "instances",
-                        instance_name,
-                        "instance_info.json",
-                    ),
+                    os.path.join(instance_path, "instance_info.json"),
                     "w",
                     encoding="utf-8",
                 ) as instance_info_file:
                     json.dump({"mc_version": mc_version}, instance_info_file)
                     QtWidgets.QMessageBox.information(
                         self,
-                        "Успешно!",
-                        f"Версия экземпляра успешно изменена на {mc_version}",
+                        get_translate("Успешно!"),
+                        get_translate(
+                            "Версия экземпляра успешно изменена на {}"
+                        ).format(mc_version),
                     )
                 self._make_ui()
 
         def rename_instance(self, instance_name: str):
             new_name, ok = QtWidgets.QInputDialog.getText(
-                self, "Переименование экземпляра", "Введите новое имя экземпляра"
+                self,
+                get_translate("Переименование экземпляра"),
+                get_translate("Введите новое имя экземпляра"),
             )
             if ok:
                 base_path = os.path.join(main_window.minecraft_directory, "instances")
@@ -1638,8 +1712,10 @@ class InstancesWindow(QtWidgets.QDialog):
                 )
                 QtWidgets.QMessageBox.information(
                     self,
-                    "Успешно!",
-                    f"Экземпляр {instance_name} был успешно переименован в {new_name}.",
+                    get_translate("Успешно!"),
+                    get_translate("Экземпляр {} был успешно переименован в {}.").format(
+                        instance_name, new_name
+                    ),
                 )
                 self._make_ui()
 
@@ -1647,8 +1723,10 @@ class InstancesWindow(QtWidgets.QDialog):
             if (
                 QtWidgets.QMessageBox.information(
                     self,
-                    "Удаление экземпляра",
-                    f"Вы уверены, что хотите удалить экземпляр {instance_name}?",
+                    get_translate("Удаление экземпляра"),
+                    get_translate(
+                        "Вы уверены, что хотите удалить экземпляр {}?"
+                    ).format(instance_name),
                     QtWidgets.QMessageBox.StandardButton.Yes
                     | QtWidgets.QMessageBox.StandardButton.No,
                 )
@@ -1660,13 +1738,17 @@ class InstancesWindow(QtWidgets.QDialog):
                     )
                 )
                 QtWidgets.QMessageBox.information(
-                    self, "Успешно!", f"Экземпляр {instance_name} был успешно удалён."
+                    self,
+                    get_translate("Успешно!"),
+                    get_translate("Экземпляр {} был успешно удалён.").format(
+                        instance_name
+                    ),
                 )
                 self._make_ui()
 
         def _make_ui(self):
             self.setModal(True)
-            self.setWindowTitle("Управление экземплярами")
+            self.setWindowTitle(get_translate("Управление экземплярами"))
             self.setFixedSize(1000, 500)
 
             while self.instances_layout.count():
@@ -1677,12 +1759,10 @@ class InstancesWindow(QtWidgets.QDialog):
             for instance_name in os.listdir(
                 os.path.join(main_window.minecraft_directory, "instances")
             ):
-                instance_info_path = os.path.join(
-                    main_window.minecraft_directory,
-                    "instances",
-                    instance_name,
-                    "instance_info.json",
+                instance_path = os.path.join(
+                    main_window.minecraft_directory, "instances", instance_name
                 )
+                instance_info_path = os.path.join(instance_path, "instance_info.json")
                 if os.path.isfile(instance_info_path):
                     with open(
                         instance_info_path, encoding="utf-8"
@@ -1695,32 +1775,38 @@ class InstancesWindow(QtWidgets.QDialog):
                     main_label = QtWidgets.QLabel(
                         container, text=f"{instance_name} ({mc_version})"
                     )
-                    rename_button = ClickableLabel(container, text="Переименовать")
+                    rename_button = ClickableLabel(
+                        container, text=get_translate("Переименовать")
+                    )
                     rename_button.clicked.connect(
                         lambda cur_instance_name=instance_name: self.rename_instance(
                             cur_instance_name
                         )
                     )
                     change_version_button = ClickableLabel(
-                        container, text="Изменить версию"
+                        container, text=get_translate("Изменить версию")
                     )
                     change_version_button.clicked.connect(
-                        lambda cur_instance_name=instance_name: (
-                            self.change_instance_mc_version(cur_instance_name)
+                        lambda cur_instance_path=instance_path: (
+                            self.change_instance_mc_version(cur_instance_path)
                         )
                     )
                     projects_button = ClickableLabel(
-                        container, text="Управление проектами"
+                        container, text=get_translate("Управление проектами")
                     )
                     projects_button.clicked.connect(
-                        lambda cur_instance_name=instance_name: (
-                            self.InstanceProjectsWindow(self, cur_instance_name)
+                        lambda cur_instance_path=instance_path: (
+                            self.InstanceProjectsWindow(self, cur_instance_path)
                         )
                     )
                     projects_button.setToolTip(
-                        "Зажмите Shift при нажатии, чтобы не загружать аватарки проектов."
+                        get_translate(
+                            "Зажмите Shift при нажатии, чтобы не загружать аватарки проектов."
+                        )
                     )
-                    delete_button = ClickableLabel(container, text="Удалить")
+                    delete_button = ClickableLabel(
+                        container, text=get_translate("Удалить")
+                    )
                     delete_button.clicked.connect(
                         lambda cur_instance_name=instance_name: self.delete_instance(
                             cur_instance_name
@@ -1754,7 +1840,7 @@ class InstancesWindow(QtWidgets.QDialog):
     def _handle_open_mrpack_choosing_window(self, mrpack_path):
         if mrpack_path is None:
             mrpack_path = QtWidgets.QFileDialog.getOpenFileName(
-                self, "Выберите файл сборки", "", "*.mrpack"
+                self, get_translate("Выберите файл сборки"), "", "*.mrpack"
             )[0].replace("/", "\\")
 
         if mrpack_path:
@@ -1777,13 +1863,13 @@ class InstancesWindow(QtWidgets.QDialog):
 
     def _make_ui(self):
         self.setModal(True)
-        self.setWindowTitle("Действия с экземплярами")
+        self.setWindowTitle(get_translate("Действия с экземплярами"))
         self.setFixedSize(300, 500)
 
         self.choose_mrpack_file_button = QtWidgets.QPushButton(self)
         self.choose_mrpack_file_button.setFixedWidth(120)
         self.choose_mrpack_file_button.move(90, 90)
-        self.choose_mrpack_file_button.setText("Импорт из .mrpack")
+        self.choose_mrpack_file_button.setText(get_translate("Импорт из .mrpack"))
         self.choose_mrpack_file_button.clicked.connect(
             lambda: self._handle_open_mrpack_choosing_window(None)
         )
@@ -1800,12 +1886,12 @@ class InstancesWindow(QtWidgets.QDialog):
         self.create_instance_button = QtWidgets.QPushButton(self)
         self.create_instance_button.setFixedWidth(120)
         self.create_instance_button.move(90, 120)
-        self.create_instance_button.setText("Создать экземпляр")
+        self.create_instance_button.setText(get_translate("Создать экземпляр"))
         self.create_instance_button.clicked.connect(
             lambda: self.CreateOwnInstance(self)
         )
         self.control_instances_button = QtWidgets.QPushButton(self)
-        self.control_instances_button.setText("Управление экземплярами")
+        self.control_instances_button.setText(get_translate("Управление экземплярами"))
         self.control_instances_button.setFixedWidth(170)
         self.control_instances_button.move(65, 150)
         self.control_instances_button.clicked.connect(
@@ -1822,7 +1908,7 @@ class MainWindow(QtWidgets.QMainWindow):
             self._make_ui()
 
         def _make_ui(self):
-            self.setWindowTitle("Просмотр лога")
+            self.setWindowTitle(get_translate("Просмотр лога"))
             self.setFixedSize(700, 700)
             self.log_text = QtWidgets.QPlainTextEdit(self)
             self.log_text.setFixedSize(700, 700)
@@ -1841,8 +1927,10 @@ class MainWindow(QtWidgets.QMainWindow):
         if self.java_path == "java" or self.java_path == "javaw":
             QtWidgets.QMessageBox.critical(
                 self,
-                "Java не найдена",
-                "На вашем компьютере отсутствует java, загрузите её с github лаунчера.",
+                get_translate("Java не найдена"),
+                get_translate(
+                    "На вашем компьютере отсутствует java, загрузите её с github лаунчера."
+                ),
             )
             logger.error("Error message showed while java checking: java not found")
             return False
@@ -1869,9 +1957,10 @@ class MainWindow(QtWidgets.QMainWindow):
         show_other_versions_position: str,
         show_instances_and_packs_position: str,
         saved_minecraft_directory: str,
-        allow_experiments: str,
-        hover_color: str,
-        skip_optional_mods: str,
+        saved_language: str,
+        allow_experiments_position: str,
+        saved_hover_color: str,
+        skip_optional_mods_position: str,
     ):
         self.chosen_version = chosen_version
         self.chosen_mod_loader = chosen_mod_loader
@@ -1891,9 +1980,10 @@ class MainWindow(QtWidgets.QMainWindow):
         self.show_other_versions_position = show_other_versions_position
         self.show_instances_and_packs_position = show_instances_and_packs_position
         self.saved_minecraft_directory = saved_minecraft_directory
-        self.allow_experiments = allow_experiments
-        self.hover_color = hover_color
-        self.skip_optional_mods = skip_optional_mods
+        self.allow_experiments_position = allow_experiments_position
+        self.saved_hover_color = saved_hover_color
+        self.skip_optional_mods_position = skip_optional_mods_position
+        self.saved_language = saved_language
 
         super().__init__()
         if self.check_java():
@@ -1993,6 +2083,7 @@ class MainWindow(QtWidgets.QMainWindow):
                 "show_other_versions": int(self.show_other_versions),
                 "show_instances_and_packs": int(self.show_instances_and_packs),
                 "minecraft_directory": self.minecraft_directory,
+                "language": self.language,
             },
             "Experiments": {
                 "allow_experiments": int(self.allow_experiments),
@@ -2043,7 +2134,7 @@ class MainWindow(QtWidgets.QMainWindow):
 
     def _after_stop_download_process(self):
         self.start_button_type = "Start"
-        self.start_button.setText("Запуск")
+        self.start_button.setText(get_translate("Запуск"))
         self.progressbar.setValue(0)
         self.download_info_label.setText("")
 
@@ -2079,7 +2170,7 @@ class MainWindow(QtWidgets.QMainWindow):
             self.timer.timeout.connect(lambda: update_ui_from_queue(self))
             self.timer.start(200)
             self.start_button_type = "Stop"
-            self.start_button.setText("Отмена")
+            self.start_button.setText(get_translate("Отмена"))
         else:
             self.minecraft_download_process.terminate()
             self._after_stop_download_process()
@@ -2211,10 +2302,11 @@ class MainWindow(QtWidgets.QMainWindow):
         self.show_releases = int(self.show_releases_position)
         self.show_other_versions = int(self.show_other_versions_position)
         self.show_instances_and_packs = int(self.show_instances_and_packs_position)
+        self.language = self.saved_language
 
-        self.allow_experiments = int(self.allow_experiments)
-        self.hover_color = self.hover_color
-        self.skip_optional_mods = int(self.skip_optional_mods)
+        self.allow_experiments = int(self.allow_experiments_position)
+        self.hover_color = self.saved_hover_color
+        self.skip_optional_mods = int(self.skip_optional_mods_position)
 
         self.start_button_type = "Start"
 
@@ -2248,11 +2340,11 @@ class MainWindow(QtWidgets.QMainWindow):
         self.nickname_entry = QtWidgets.QLineEdit(self)
         self.nickname_entry.move(20, 60)
         self.nickname_entry.setFixedWidth(260)
-        self.nickname_entry.setPlaceholderText("Никнейм")
+        self.nickname_entry.setPlaceholderText(get_translate("Никнейм"))
         self.nickname_entry.setText(self.nickname)
 
         self.optifine_checkbox = QtWidgets.QCheckBox(self)
-        self.optifine_checkbox.setText("Optifine")
+        self.optifine_checkbox.setText(get_translate("Optifine"))
         self.optifine_checkbox.move(20, 100)
         self.optifine_checkbox.setFixedWidth(260)
         self.optifine_checkbox.setChecked(bool(self.optifine))
@@ -2269,13 +2361,13 @@ class MainWindow(QtWidgets.QMainWindow):
         self.block_optifine_checkbox()
 
         self.start_button = QtWidgets.QPushButton(self)
-        self.start_button.setText("Запуск")
+        self.start_button.setText(get_translate("Запуск"))
         self.start_button.setFixedWidth(260)
         self.start_button.clicked.connect(self.on_start_button)
         self.start_button.move(20, 140)
 
         self.download_projects_button = QtWidgets.QPushButton(self)
-        self.download_projects_button.setText("Скачать проекты")
+        self.download_projects_button.setText(get_translate("Скачать проекты"))
         self.download_projects_button.setFixedWidth(220)
         self.download_projects_button.move(40, 360)
         self.download_projects_button.clicked.connect(
@@ -2283,7 +2375,7 @@ class MainWindow(QtWidgets.QMainWindow):
         )
 
         self.create_instance_button = QtWidgets.QPushButton(self)
-        self.create_instance_button.setText("Действия с экземплярами")
+        self.create_instance_button.setText(get_translate("Действия с экземплярами"))
         self.create_instance_button.setFixedWidth(220)
         self.create_instance_button.move(40, 400)
         self.create_instance_button.clicked.connect(lambda: InstancesWindow(self))
@@ -2298,13 +2390,13 @@ class MainWindow(QtWidgets.QMainWindow):
         self.download_info_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
 
         self.settings_button = QtWidgets.QPushButton(self)
-        self.settings_button.setText("Настройки")
+        self.settings_button.setText(get_translate("Настройки"))
         self.settings_button.clicked.connect(SettingsWindow)
         self.settings_button.move(5, 465)
         self.settings_button.setFixedWidth(80)
 
         self.account_button = QtWidgets.QPushButton(self)
-        self.account_button.setText("Аккаунт")
+        self.account_button.setText(get_translate("Аккаунт"))
         self.account_button.clicked.connect(AccountWindow)
         self.account_button.move(215, 465)
         self.account_button.setFixedWidth(80)
@@ -2349,8 +2441,10 @@ class MainWindow(QtWidgets.QMainWindow):
             if (
                 QtWidgets.QMessageBox.information(
                     self,
-                    "Новое обновление!",
-                    "Вышло новое обновление лаунчера. Нажмите Оk для обновления. После загрузки инсталлера, согласитесь на внесение изменений на устройстве.",
+                    get_translate("Новое обновление!"),
+                    get_translate(
+                        "Вышло новое обновление лаунчера. Нажмите Оk для обновления. После загрузки инсталлера, согласитесь на внесение изменений на устройстве."
+                    ),
                     QtWidgets.QMessageBox.StandardButton.Ok
                     | QtWidgets.QMessageBox.StandardButton.Cancel,
                 )
@@ -2370,12 +2464,8 @@ class MainWindow(QtWidgets.QMainWindow):
 
 
 if __name__ == "__main__":
-    type_to_russian_name = {
-        "mod": "мод",
-        "resourcepack": "ресурспак",
-        "modpack": "сборка",
-        "shader": "шейдер",
-    }
+    langcode_to_name = {"be": "Беларуская", "ru": "Русский"}
+    name_to_langcode = {v: k for k, v in langcode_to_name.items()}
     multiprocessing.freeze_support()
     open("FVLauncher.log", "w").close()
     logging.getLogger("requests").setLevel(logging.WARNING)
@@ -2384,6 +2474,13 @@ if __name__ == "__main__":
     config = load_config()
     logger.debug("Config loaded")
     faker = Faker()
+    utils.load_language(config["Settings"]["language"])
+    type_to_name = {
+        "mod": get_translate("мод"),
+        "resourcepack": get_translate("ресурспак"),
+        "modpack": get_translate("сборка"),
+        "shader": get_translate("шейдер"),
+    }
     main_window = MainWindow(
         config["Preset"]["version"],
         config["Preset"]["mod_loader"],
@@ -2403,6 +2500,7 @@ if __name__ == "__main__":
         config["Settings"]["show_other_versions"],
         config["Settings"]["show_instances_and_packs"],
         config["Settings"]["minecraft_directory"],
+        config["Settings"]["language"],
         config["Experiments"]["allow_experiments"],
         config["Experiments"]["hover_color"],
         config["Experiments"]["skip_optional_mods"],

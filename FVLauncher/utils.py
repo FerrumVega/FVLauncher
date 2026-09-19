@@ -35,8 +35,26 @@ class Constants:
     ELY_PROXY_URL = "https://fvlauncher.ferrumthevega.workers.dev"
     ELY_CLIENT_ID = "fvlauncherapp"
 
-    LAUNCHER_VERSION = "v8.6"
+    LAUNCHER_VERSION = "v8.7"
     USER_AGENT = Faker().user_agent()
+
+
+def load_language(lang):
+    global lang_json
+    with open(f"translates/{lang}.json", encoding="utf-8") as lang_file:
+        lang_json = json.load(lang_file)
+
+
+def get_translate(word):
+    try:
+        if tr := lang_json[word]:
+            return tr
+        else:
+            logger.debug(f"Locale dict value is null ({word})")
+            return word
+    except KeyError:
+        logger.debug(f"Locale dict value do not have a translate ({word})")
+        return word
 
 
 app = QtWidgets.QApplication(sys.argv)
@@ -53,7 +71,7 @@ window_icon = QtGui.QIcon(
 def search_projects(
     minecraft_directory: str, instance_name: str, load_icons: bool, queue: Queue
 ):
-    queue.put(("status", "Вычиление хэшей"))
+    queue.put(("status", get_translate("Вычисление хэшей")))
     hashes_and_paths = {}
     instance_path = os.path.join(minecraft_directory, "instances", instance_name)
     for project_type_folder in [
@@ -73,7 +91,7 @@ def search_projects(
                     )
         except FileNotFoundError:
             pass
-    queue.put(("status", "Поиск файлов версий"))
+    queue.put(("status", get_translate("Поиск файлов версий")))
     with requests.post(
         "https://api.modrinth.com/v2/version_files",
         json={
@@ -174,11 +192,15 @@ def run_in_process_with_exceptions_logging(
 
 def boolean_to_sign_status(auth_info: tuple[bool | None, str | None]):
     sign_text = {
-        True: "Вы вошли в аккаунт",
-        False: "Вы не вошли в аккаунт",
-        None: "Ошибка проверки входа в аккаунт",
+        True: get_translate("Вы вошли в аккаунт"),
+        False: get_translate("Вы не вошли в аккаунт"),
+        None: get_translate("Ошибка проверки входа в аккаунт"),
     }[auth_info[0]]
-    return f"{sign_text} (Аккаунт {auth_info[1]})" if auth_info[0] else sign_text
+    return (
+        f"{sign_text} ({get_translate('Аккаунт')} {auth_info[1]})"
+        if auth_info[0]
+        else sign_text
+    )
 
 
 def download_instance_from_mrpack(
@@ -235,8 +257,10 @@ def download_instance_from_mrpack(
         queue.put((
             "show_message",
             "information",
-            "Сборка установлена",
-            f"Сборка {mrpack_info['name']} была успешно установлена в папку {folder_name}!",
+            get_translate("Сборка установлена"),
+            get_translate("Сборка {} была успешно установлена в папку {}!").format(
+                mrpack_info["name"], folder_name
+            ),
         ))
 
 
@@ -270,7 +294,7 @@ def download_authlib(
     queue: Queue,
 ):
     if not no_internet_connection:
-        queue.put(("status", "Загрузка authlib..."))
+        queue.put(("status", get_translate("Загрузка authlib...")))
         logger.debug(
             f"Installing authlib in launch, account type: {launch_account_type}"
         )
@@ -321,8 +345,10 @@ def download_authlib(
                     queue.put((
                         "show_message",
                         "warning",
-                        "Ошибка authlib",
-                        "Для данной версии ещё не вышла патченая authlib, обычна она выходит в течении пяти дней после выхода версии.",
+                        get_translate("Ошибка authlib"),
+                        get_translate(
+                            "Для данной версии ещё не вышла патченая authlib, обычна она выходит в течении пяти дней после выхода версии."
+                        ),
                     ))
                     logger.warning(
                         f"Warning message showed in download_authlib: skin error, there is not patched authlib for {raw_version} version"
@@ -350,8 +376,10 @@ def download_authlib(
             queue.put((
                 "show_message",
                 "warning",
-                "Ошибка authlib",
-                "На данной версии нет authlib, скины и авторизация не поддерживаются.",
+                get_translate("Ошибка authlib"),
+                get_translate(
+                    "На данной версии нет authlib, скины и авторизация не поддерживаются."
+                ),
             ))
             logger.warning(
                 f"Warning message showed in download_authlib: skins not supported on {raw_version} version"
@@ -360,8 +388,8 @@ def download_authlib(
         queue.put((
             "show_message",
             "warning",
-            "Ошибка authlib",
-            "Отсутсвует подключение к интернету.",
+            get_translate("Ошибка authlib"),
+            get_translate("Отсутствует подключение к интернету."),
         ))
         logger.warning(
             "Warning message showed in download_authlib: skin error, no internet connection"
@@ -430,16 +458,20 @@ def resolve_version_name(
                     queue.put((
                         "show_message",
                         "critical",
-                        "Ошибка запуска профиля/сборки",
-                        "Версия игры, которую требует профиль/сборка некорректно установлена. Запуск невозможен.",
+                        get_translate("Ошибка запуска сборки"),
+                        get_translate(
+                            "Версия игры, которую требует сборка, некорректно установлена. Запуск невозможен."
+                        ),
                     ))
                     return None, {"do_not_install": True}
                 else:
                     queue.put((
                         "show_message",
                         "critical",
-                        "Ошибка запуска профиля/сборки",
-                        'Для запуска сборки/профиля выберите "vanilla" в списке загрузчиков модов',
+                        get_translate("Ошибка запуска сборки"),
+                        get_translate(
+                            'Для запуска сборки выберите "vanilla" в списке загрузчиков модов'
+                        ),
                     ))
                     return None, {"do_not_install": True}
     return None, {}
@@ -500,8 +532,10 @@ def install_version(
             queue.put((
                 "show_message",
                 "critical",
-                "Ошибка загрузки",
-                "Произошла непредвиденная ошибка во время загрузки версии.",
+                get_translate("Ошибка загрузки"),
+                get_translate(
+                    "Произошла непредвиденная ошибка во время загрузки версии."
+                ),
             ))
             queue.put(("start_button", True))
             logger.error(
@@ -512,8 +546,10 @@ def install_version(
         queue.put((
             "show_message",
             "critical",
-            "Ошибка подключения",
-            "Вы в оффлайн-режиме. Версия отсутсвует на вашем компьютере, загрузка невозможна. Попробуйте перезапустить лаунчер.",
+            get_translate("Ошибка подключения"),
+            get_translate(
+                "Вы в оффлайн-режиме. Версия отсутствует на вашем компьютере, загрузка невозможна. Попробуйте перезапустить лаунчер."
+            ),
         ))
         queue.put(("start_button", True))
         logger.error(
@@ -523,8 +559,8 @@ def install_version(
         queue.put((
             "show_message",
             "critical",
-            "Ошибка",
-            "Для данной версии нет выбранного вами загрузчика модов.",
+            get_translate("Ошибка"),
+            get_translate("Для данной версии нет выбранного вами загрузчика модов."),
         ))
         queue.put(("start_button", True))
         logger.error(
@@ -543,7 +579,7 @@ def download_optifine(
         optifine_info = optipy.getVersion(raw_version)
         if optifine_info is not None:
             url = optifine_info[raw_version][0]["url"]
-            queue.put(("status", "Загрузка optifine..."))
+            queue.put(("status", get_translate("Загрузка optifine...")))
             logger.debug("Installing optifine in download_optifine")
             with (
                 open(optifine_path, "wb") as optifine_jar,
@@ -556,8 +592,8 @@ def download_optifine(
             queue.put((
                 "show_message",
                 "warning",
-                "Запуск без optifine",
-                "Optifine недоступен на выбранной вами версии.",
+                get_translate("Запуск без optifine"),
+                get_translate("Optifine недоступен на выбранной вами версии."),
             ))
             logger.warning(
                 f"Warning message showed in download_optifine: optifine is not support on {raw_version} version"
@@ -566,8 +602,8 @@ def download_optifine(
         queue.put((
             "show_message",
             "warning",
-            "Ошибка optifine",
-            "Отсутсвует подключение к интернету.",
+            get_translate("Ошибка optifine"),
+            get_translate("Отсутствует подключение к интернету."),
         ))
         logger.warning(
             "Warning message showed in download_optifine: optifine error, no internet connection"
@@ -628,7 +664,8 @@ def launch(
                         "instances",
                         version,
                         "instance_info.json",
-                    )
+                    ),
+                    encoding="utf-8",
                 ) as instance_info_file:
                     version_with_loader = json.load(instance_info_file)["mc_version"]
                     with open(
@@ -682,7 +719,7 @@ def launch(
             **popen_kwargs,
         )
         queue.put(("start_button", True))
-        queue.put(("status", "Игра запущена"))
+        queue.put(("status", get_translate("Игра запущена")))
         queue.put(("progressbar", 100))
         logger.debug(f"Minecraft process started on {version} version")
         queue.put((
@@ -696,11 +733,11 @@ def launch(
             queue.put((
                 "show_message",
                 "log",
-                "Игра была закрыта с ошибкой",
-                (
-                    f"Minecraft вернул ошибку (крашнулся). Код ошибки: {minecraft_return_code}<br>"
+                get_translate("Игра была закрыта с ошибкой"),
+                get_translate(
+                    "Minecraft вернул ошибку (крашнулся). Код ошибки: {}<br>"
                     "Вы хотите открыть лог?"
-                ),
+                ).format(minecraft_return_code),
                 os.path.join(minecraft_directory, "logs", "latest.log"),
             ))
         queue.put(("start_rich_presence", "minecraft_closed"))
@@ -741,8 +778,10 @@ def only_project_install(
     queue_info = [
         "show_message",
         "information",
-        "Проект установлен",
-        f"Проект {project_version['title']} был успешно установлен.",
+        get_translate("Проект установлен"),
+        get_translate("Проект {} был успешно установлен.").format(
+            project_version["title"]
+        ),
     ]
     if project_version["project_type"] == "modpack":
         queue_info.append(project_file_path)
@@ -756,13 +795,13 @@ def start_rich_presence(
     try:
         if pid is None:
             rpc.update(
-                details="В меню",
+                details=get_translate("В меню"),
                 start=Constants.START_LAUNCHER_TIME,
                 large_image="minecraft_title",
                 large_text="FVLauncher",
                 buttons=[
                     {
-                        "label": "Скачать лаунчер",
+                        "label": get_translate("Скачать лаунчер"),
                         "url": "https://github.com/FerrumVega/FVLauncher",
                     }
                 ],
@@ -770,7 +809,7 @@ def start_rich_presence(
         else:
             rpc.update(
                 pid=pid,
-                state=(f"Играет на версии {raw_version}"),
+                state=(get_translate("Играет на версии {}").format(raw_version)),
                 details="В Minecraft",
                 start=Constants.START_LAUNCHER_TIME,
                 large_image="minecraft_title",
@@ -779,7 +818,7 @@ def start_rich_presence(
                 small_text="В игре",
                 buttons=[
                     {
-                        "label": "Скачать лаунчер",
+                        "label": get_translate("Скачать лаунчер"),
                         "url": "https://github.com/FerrumVega/FVLauncher",
                     }
                 ],
