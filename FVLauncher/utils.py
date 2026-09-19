@@ -35,7 +35,7 @@ class Constants:
     ELY_PROXY_URL = "https://fvlauncher.ferrumthevega.workers.dev"
     ELY_CLIENT_ID = "fvlauncherapp"
 
-    LAUNCHER_VERSION = "v8.7.1"
+    LAUNCHER_VERSION = "v8.7.2"
     USER_AGENT = Faker().user_agent()
 
 
@@ -784,7 +784,10 @@ def only_project_install(
                         "progressbar",
                         min(100, int(bytes_downloaded / project_size * 100)),
                     ))
-                    queue.put(("status", f"Загрузка {project_version['title']}"))
+                    queue.put((
+                        "status",
+                        get_translate("Загрузка {}").format(project_version["title"]),
+                    ))
                     project_file.write(chunk)
     queue_info = [
         "show_message",
@@ -821,12 +824,12 @@ def start_rich_presence(
             rpc.update(
                 pid=pid,
                 state=(get_translate("Играет на версии {}").format(raw_version)),
-                details="В Minecraft",
+                details=get_translate("В Minecraft"),
                 start=Constants.START_LAUNCHER_TIME,
                 large_image="minecraft_title",
                 large_text="FVLauncher",
                 small_image="grass_block",
-                small_text="В игре",
+                small_text=get_translate("В игре"),
                 buttons=[
                     {
                         "label": get_translate("Скачать лаунчер"),

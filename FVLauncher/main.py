@@ -1432,7 +1432,7 @@ class InstancesWindow(QtWidgets.QDialog):
                     self,
                     get_translate("Выберите оверрайды"),
                     self.instance_path,
-                    "Все файлы (*)",
+                    get_translate("Все файлы (*)"),
                 )
                 overrides_paths.extend(self.other_projects_paths)
                 index_dict = {
