@@ -35,7 +35,7 @@ class Constants:
     ELY_PROXY_URL = "https://fvlauncher.ferrumthevega.workers.dev"
     ELY_CLIENT_ID = "fvlauncherapp"
 
-    LAUNCHER_VERSION = "v8.7"
+    LAUNCHER_VERSION = "v8.7.1"
     USER_AGENT = Faker().user_agent()
 
 
@@ -69,8 +69,13 @@ window_icon = QtGui.QIcon(
 
 
 def search_projects(
-    minecraft_directory: str, instance_name: str, load_icons: bool, queue: Queue
+    minecraft_directory: str,
+    instance_name: str,
+    load_icons: bool,
+    langcode: str,
+    queue: Queue,
 ):
+    load_language(langcode)
     queue.put(("status", get_translate("Вычисление хэшей")))
     hashes_and_paths = {}
     instance_path = os.path.join(minecraft_directory, "instances", instance_name)
@@ -130,7 +135,7 @@ def search_projects(
                 projects[project_id]["icon_bytes"] = None
             logger.debug(f"Doing smth with {project_name} ({index}/{projects_len})")
             queue.put(("progressbar", index / projects_len * 100))
-            queue.put(("status", f"Работа с {project_name}"))
+            queue.put(("status", get_translate("Работа с {}").format(project_name)))
     queue.put(("projects", projects, list(hashes_and_paths.values())))
 
 
@@ -207,8 +212,10 @@ def download_instance_from_mrpack(
     minecraft_directory: str,
     mrpack_path: str,
     no_internet_connection: bool,
+    langcode: str,
     queue: Queue,
 ):
+    load_language(langcode)
     track_progress = track_progress_factory(queue)
 
     if mrpack_path:
@@ -622,8 +629,10 @@ def launch(
     java_arguments: str,
     launch_account_type: str,
     no_internet_connection: bool,
+    langcode: str,
     queue: Queue,
 ):
+    load_language(langcode)
     install_type, options = prepare_installation_parameters(
         mod_loader, nickname, game_uuid, access_token, java_arguments
     )
@@ -758,8 +767,10 @@ def mod_loader_is_supported(raw_version: str, mod_loader: str):
 def only_project_install(
     project_version: dict[Any, Any],
     project_file_path: str,
+    langcode: str,
     queue: Queue,
 ):
+    load_language(langcode)
     with requests.get(project_version["url"], stream=True, timeout=10) as r:
         r.raise_for_status()
         with open(project_file_path, "wb") as project_file:
